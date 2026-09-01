@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "feature/**"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  PROJECT: intelliops
+
+jobs:
+  ci:
+    name: Build, Scan, Push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    strategy:
+      matrix:
+        service: [payment-service, order-service]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: tag
+        run: echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Run unit tests
+        working-directory: k8s/apps/${{ matrix.service }}
+        run: |
+          if [ -f "Makefile" ]; then make test; fi
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/$PROJECT/${{ matrix.service }}:${{ steps.tag.outputs.IMAGE_TAG }} \
+            -t $ECR_REGISTRY/$PROJECT/${{ matrix.service }}:latest \
+            k8s/apps/${{ matrix.service }}
+
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.PROJECT }}/${{ matrix.service }}:${{ steps.tag.outputs.IMAGE_TAG }}
+          format: table
+          exit-code: "1"
+          severity: CRITICAL
+
+      - name: Push to ECR
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker push $ECR_REGISTRY/$PROJECT/${{ matrix.service }}:${{ steps.tag.outputs.IMAGE_TAG }}
+          docker push $ECR_REGISTRY/$PROJECT/${{ matrix.service }}:latest
+
+      - name: Update Helm values with new image tag
+        if: github.ref == 'refs/heads/main'
+        run: |
+          sed -i "s|tag:.*|tag: ${{ steps.tag.outputs.IMAGE_TAG }}|" \
+            helm/${{ matrix.service }}/values.yaml
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add helm/${{ matrix.service }}/values.yaml
+          git commit -m "ci: update ${{ matrix.service }} image to ${{ steps.tag.outputs.IMAGE_TAG }}" || true
+          git push || true
+
+  helm-lint:
+    name: Helm Lint
+    runs-on: ubuntu-latest
+    needs: ci
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint payment-service chart
+        run: helm lint helm/payment-service
+
+      - name: Lint order-service chart
+        run: helm lint helm/order-service
+
+      - name: Template validation
+        run: |
+          helm template payment-service helm/payment-service --debug > /dev/null
+          helm template order-service helm/order-service --debug > /dev/null
