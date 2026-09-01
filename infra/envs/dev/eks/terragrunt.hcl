@@ -13,7 +13,7 @@ dependency "vpc" {
     vpc_id             = "vpc-mock"
     private_subnet_ids = ["subnet-mock-1", "subnet-mock-2", "subnet-mock-3"]
   }
-  mock_outputs_allowed_terraform_commands = ["validate", "plan"]
+  mock_outputs_allowed_terraform_commands = ["init", "validate", "plan"]
 }
 
 inputs = {
