@@ -11,7 +11,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = local.aws_region
     encrypt        = true
-    dynamodb_table = "${local.project}-tflock-${local.environment}"
+    use_lockfile = true
   }
   generate = {
     path      = "backend.tf"
