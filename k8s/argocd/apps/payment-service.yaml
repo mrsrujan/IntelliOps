@@ -8,7 +8,7 @@ metadata:
 spec:
   project: intelliops
   source:
-    repoURL: https://github.com/YOUR_ORG/intelliops
+    repoURL: https://github.com/mrsrujan/intelliops
     targetRevision: main
     path: helm/payment-service
     helm:

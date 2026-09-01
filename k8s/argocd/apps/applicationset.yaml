@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: intelliops
+  namespace: argocd
+spec:
+  generators:
+    - matrix:
+        generators:
+          - list:
+              elements:
+                - env: dev
+                  branch: main
+                  cluster: https://kubernetes.default.svc
+          - list:
+              elements:
+                - service: payment-service
+                - service: order-service
+  template:
+    metadata:
+      name: "{{service}}-{{env}}"
+      namespace: argocd
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: intelliops
+      source:
+        repoURL: https://github.com/mrsrujan/intelliops
+        targetRevision: "{{branch}}"
+        path: "helm/{{service}}"
+        helm:
+          valueFiles:
+            - values.yaml
+      destination:
+        server: "{{cluster}}"
+        namespace: "apps-{{env}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 10s
+            maxDuration: 3m
+            factor: 2

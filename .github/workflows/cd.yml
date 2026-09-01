@@ -1,0 +1,67 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: intelliops-dev
+
+jobs:
+  deploy:
+    name: Sync ArgoCD
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /usr/local/bin/argocd \
+            https://github.com/argoproj/argo-cd/releases/download/v2.12.0/argocd-linux-amd64
+          chmod +x /usr/local/bin/argocd
+
+      - name: Port-forward ArgoCD server
+        run: |
+          kubectl port-forward svc/argocd-server -n argocd 8080:443 &
+          sleep 5
+
+      - name: ArgoCD login
+        run: |
+          ARGOCD_PASSWORD=$(kubectl get secret argocd-initial-admin-secret \
+            -n argocd -o jsonpath='{.data.password}' | base64 -d)
+          argocd login localhost:8080 \
+            --username admin \
+            --password "$ARGOCD_PASSWORD" \
+            --insecure
+
+      - name: Sync payment-service
+        run: argocd app sync payment-service --force --timeout 120
+
+      - name: Sync order-service
+        run: argocd app sync order-service --force --timeout 120
+
+      - name: Wait for healthy
+        run: |
+          argocd app wait payment-service --health --timeout 180
+          argocd app wait order-service --health --timeout 180
+
+      - name: Print sync status
+        if: always()
+        run: |
+          argocd app get payment-service
+          argocd app get order-service
