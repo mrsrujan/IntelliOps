@@ -1,0 +1,77 @@
+name: Chaos
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Target service"
+        required: true
+        default: "payment-service"
+        type: choice
+        options:
+          - payment-service
+          - order-service
+      fault:
+        description: "Fault type"
+        required: true
+        default: "errors"
+        type: choice
+        options:
+          - cpu
+          - memory-leak
+          - latency
+          - errors
+      intensity:
+        description: "Intensity (rate for errors 0-1, ms for latency, seconds for cpu, MB for memory-leak)"
+        required: true
+        default: "0.5"
+      duration_seconds:
+        description: "Duration in seconds (ignored for cpu/memory-leak)"
+        required: false
+        default: "120"
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: intelliops-dev
+
+jobs:
+  inject:
+    name: Inject fault via /admin/inject
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ${{ env.CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+
+      - name: Port-forward the target service
+        run: |
+          POD=$(kubectl get pod -n apps-dev -l app.kubernetes.io/name=${{ inputs.service }} -o jsonpath='{.items[0].metadata.name}')
+          kubectl port-forward -n apps-dev pod/$POD 8080:8080 &
+          until curl -sf http://localhost:8080/health > /dev/null; do sleep 1; done
+
+      - name: Inject ${{ inputs.fault }}
+        run: |
+          case "${{ inputs.fault }}" in
+            cpu)
+              curl -sf -X POST "http://localhost:8080/admin/inject/cpu?seconds=${{ inputs.intensity }}"
+              ;;
+            memory-leak)
+              curl -sf -X POST "http://localhost:8080/admin/inject/memory-leak?mb=${{ inputs.intensity }}"
+              ;;
+            latency)
+              curl -sf -X POST "http://localhost:8080/admin/inject/latency?ms=${{ inputs.intensity }}&duration=${{ inputs.duration_seconds }}"
+              ;;
+            errors)
+              curl -sf -X POST "http://localhost:8080/admin/inject/errors?rate=${{ inputs.intensity }}&duration=${{ inputs.duration_seconds }}"
+              ;;
+          esac
+          echo "Injected ${{ inputs.fault }} into ${{ inputs.service }} — check Prometheus and CloudWatch Logs"
