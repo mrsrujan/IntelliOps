@@ -8,7 +8,7 @@ metadata:
 spec:
   project: intelliops
   source:
-    repoURL: https://github.com/mrsrujan/intelliops
+    repoURL: https://github.com/mrsrujan/IntelliOps
     targetRevision: main
     path: helm/monitoring
     helm:
