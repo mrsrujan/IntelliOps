@@ -16,6 +16,7 @@ spec:
               elements:
                 - service: payment-service
                 - service: order-service
+                - service: ui
   template:
     metadata:
       name: "{{service}}-{{env}}"

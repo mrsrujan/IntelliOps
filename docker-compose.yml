@@ -27,6 +27,18 @@ services:
       timeout: 5s
       retries: 3
 
+  ui:
+    build:
+      context: k8s/apps/ui
+    ports:
+      - "8080:8080"
+    environment:
+      - ORDER_SERVICE_URL=http://order-service:8080
+      - PAYMENT_SERVICE_URL=http://payment-service:8080
+    depends_on:
+      - order-service
+      - payment-service
+
   prometheus:
     image: prom/prometheus:v2.52.0
     ports:
