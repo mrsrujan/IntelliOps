@@ -38,7 +38,7 @@ jobs:
       - name: Port-forward ArgoCD server
         run: |
           kubectl port-forward svc/argocd-server -n argocd 8080:443 &
-          sleep 5
+          until curl -sk https://localhost:8080/healthz | grep -q ok; do sleep 2; done
 
       - name: ArgoCD login
         run: |
