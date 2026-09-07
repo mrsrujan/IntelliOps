@@ -1,0 +1,14 @@
+kyverno:
+  admissionController:
+    replicas: 1
+
+  # Background scanning finds existing violations after policies are applied,
+  # not just on new admissions.
+  backgroundController:
+    replicas: 1
+
+  cleanupController:
+    replicas: 1
+
+  reportsController:
+    replicas: 1

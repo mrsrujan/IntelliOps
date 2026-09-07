@@ -1,0 +1,9 @@
+apiVersion: v2
+name: falco
+description: IntelliOps runtime threat detection — Falco DaemonSet
+type: application
+version: 0.1.0
+dependencies:
+  - name: falco
+    version: "4.16.0"
+    repository: https://falcosecurity.github.io/charts

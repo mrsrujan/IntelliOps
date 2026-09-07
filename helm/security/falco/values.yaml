@@ -1,0 +1,28 @@
+falco:
+  # Modern kernel drivers use eBPF; keep it selectable in case the base AMI ever changes.
+  driver:
+    kind: modern_ebpf
+
+  # Enable falcosidekick to fan out events to Slack
+  falcosidekick:
+    enabled: true
+    webui:
+      enabled: true
+    config:
+      slack:
+        webhookurl: ""   # set at deploy time via TF override or manual patch
+        minimumpriority: warning
+        outputformat: fields
+
+  # Default rulesets cover most common attacks (shell in container, unexpected
+  # network activity, /etc/shadow reads, etc.) — no custom rules needed to start.
+  falco:
+    rules_files:
+      - /etc/falco/falco_rules.yaml
+      - /etc/falco/falco_rules.local.yaml
+      - /etc/falco/k8s_audit_rules.yaml
+      - /etc/falco/rules.d
+    json_output: true
+    json_include_output_property: true
+    log_level: info
+    priority: warning

@@ -1,0 +1,16 @@
+trivy-operator:
+  # Scan every namespace except system add-ons — noisy and pre-scanned upstream.
+  targetNamespaces: "apps-dev,argocd,monitoring"
+
+  # Continuous rescan: images every 24h, configs every 6h.
+  operator:
+    scanJobsConcurrentLimit: 5
+    vulnerabilityScannerEnabled: true
+    configAuditScannerEnabled: true
+    rbacAssessmentScannerEnabled: true
+    exposedSecretScannerEnabled: true
+    metricsFindingsEnabled: true
+
+  trivy:
+    severity: "CRITICAL,HIGH,MEDIUM"
+    ignoreUnfixed: true   # noise reduction: only flag CVEs with an available fix

@@ -1,0 +1,16 @@
+external-secrets:
+  installCRDs: true
+  webhook:
+    port: 9443
+
+  # ServiceAccount annotation is patched by ArgoCD to include the IRSA role ARN
+  # at deploy time (see k8s/argocd/apps/external-secrets.yaml). The IAM role
+  # itself would be created by an eso IRSA module (not yet added — deferred
+  # since the current project has no in-cluster secrets that need syncing).
+  serviceAccount:
+    create: true
+    name: external-secrets
+
+# A ClusterSecretStore pointing at AWS Secrets Manager is included as a
+# template so users can immediately create ExternalSecret resources against it.
+awsRegion: us-east-1

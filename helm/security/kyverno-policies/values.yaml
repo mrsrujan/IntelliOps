@@ -1,0 +1,4 @@
+# All policies default to Audit — findings appear in PolicyReport CRs but
+# nothing is blocked. Flip individual policies to Enforce once the workloads
+# comply (e.g. disallow-latest-tag becomes Enforce after CI is bumping tags).
+validationFailureAction: Audit

@@ -1,0 +1,26 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+  annotations:
+    policies.kyverno.io/title: Require liveness and readiness probes
+    policies.kyverno.io/category: Best Practices
+spec:
+  validationFailureAction: {{ .Values.validationFailureAction }}
+  background: true
+  rules:
+    - name: require-liveness-readiness
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [apps-dev]
+      validate:
+        message: "Every container must define both livenessProbe and readinessProbe."
+        pattern:
+          spec:
+            containers:
+              - livenessProbe:
+                  "?*": "?*"
+                readinessProbe:
+                  "?*": "?*"

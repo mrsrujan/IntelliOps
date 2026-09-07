@@ -1,0 +1,5 @@
+apiVersion: v2
+name: network-policies
+description: IntelliOps NetworkPolicies for apps-dev — default deny plus explicit allows
+type: application
+version: 0.1.0

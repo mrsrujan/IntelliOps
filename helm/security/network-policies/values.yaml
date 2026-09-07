@@ -1,0 +1,3 @@
+namespace: apps-dev
+monitoringNamespace: monitoring
+kubeSystemNamespace: kube-system
