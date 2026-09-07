@@ -1,0 +1,9 @@
+apiVersion: v2
+name: monitoring
+description: IntelliOps observability stack — Prometheus and Grafana
+type: application
+version: 0.1.0
+dependencies:
+  - name: kube-prometheus-stack
+    version: "61.3.0"
+    repository: https://prometheus-community.github.io/helm-charts

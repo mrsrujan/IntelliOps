@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: intelliops-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  intelliops.json: |
+    {
+      "title": "IntelliOps Services",
+      "uid": "intelliops-services",
+      "schemaVersion": 38,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "timezone": "browser",
+      "tags": ["intelliops"],
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Request Rate",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "fieldConfig": {
+            "defaults": { "unit": "reqps", "color": { "mode": "palette-classic" } },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": { "mode": "multi" },
+            "legend": { "displayMode": "list" }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(order_requests_total[5m]))",
+              "legendFormat": "order-service",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(payment_requests_total[5m]))",
+              "legendFormat": "payment-service",
+              "refId": "B"
+            }
+          ],
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Error Rate",
+          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "color": { "mode": "palette-classic" }
+            },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": { "mode": "multi" },
+            "legend": { "displayMode": "list" }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(order_requests_total{status=~\"4..|5..\"}[5m])) / sum(rate(order_requests_total[5m]))",
+              "legendFormat": "order-service",
+              "refId": "A"
+            },
+            {
+              "expr": "sum(rate(payment_requests_total{status=~\"5..\"}[5m])) / sum(rate(payment_requests_total[5m]))",
+              "legendFormat": "payment-service",
+              "refId": "B"
+            }
+          ],
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "P95 Request Latency",
+          "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+          "fieldConfig": {
+            "defaults": { "unit": "s", "color": { "mode": "palette-classic" } },
+            "overrides": []
+          },
+          "options": {
+            "tooltip": { "mode": "multi" },
+            "legend": { "displayMode": "list" }
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(order_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "order-service p95",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(payment_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "payment-service p95",
+              "refId": "B"
+            }
+          ],
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Orders Created (last 1h)",
+          "gridPos": { "x": 0, "y": 16, "w": 12, "h": 6 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "color": { "mode": "thresholds" } },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "textMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "targets": [
+            {
+              "expr": "sum(increase(orders_created_total[1h]))",
+              "legendFormat": "orders",
+              "refId": "A"
+            }
+          ],
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Payment Revenue (last 1h)",
+          "gridPos": { "x": 12, "y": 16, "w": 12, "h": 6 },
+          "fieldConfig": {
+            "defaults": { "unit": "currencyUSD", "color": { "mode": "thresholds" } },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "background",
+            "textMode": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "targets": [
+            {
+              "expr": "sum(increase(payment_amount_total[1h]))",
+              "legendFormat": "revenue",
+              "refId": "A"
+            }
+          ],
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    }
