@@ -6,50 +6,64 @@
 
 ```mermaid
 flowchart LR
-    DEV(["👨‍💻 Developer"])
+    DEV(["Developer"])
 
     subgraph GH ["GitHub"]
         REPO[(Repository\nmain · feature/**)]
 
+        subgraph SECRET ["Hard Gate — Secret Scan"]
+            GITLEAKS["Gitleaks\nfull git history"]
+        end
+
+        subgraph IAC ["Soft Gate — IaC Config Scan  (parallel)"]
+            TRIVY_IAC["Trivy config\nhelm/ · infra/"]
+        end
+
         subgraph CI ["GitHub Actions — CI"]
             direction TB
             CI1["① Checkout + OIDC Auth"]
-            CI2["② docker build\norder-service · payment-service"]
-            CI3["③ Trivy scan\nCRITICAL CVE = fail"]
-            CI4["④ Push :sha + :latest\nto Amazon ECR"]
-            CI5["⑤ Bump image tag\nin values.yaml → git commit"]
-            CI6["⑥ helm lint +\ntemplate validate"]
-            CI1 --> CI2 --> CI3 --> CI4 --> CI5 --> CI6
+            CI2["② unit tests"]
+            CI3["③ pip-audit  (soft)"]
+            CI4["④ Bandit SAST  (soft)"]
+            CI5["⑤ docker build"]
+            CI6["⑥ Trivy image scan\nCRITICAL = hard fail"]
+            CI7["⑦ push :sha + :latest → ECR"]
+            CI8["⑧ bump values.yaml\ngit rebase + push"]
+            CI1 --> CI2 --> CI3 --> CI4 --> CI5 --> CI6 --> CI7 --> CI8
         end
 
-        subgraph CD ["GitHub Actions — CD  (triggers on CI success)"]
+        HELM_LINT["Helm Lint + template validate"]
+
+        subgraph CD ["GitHub Actions — CD  (on CI success)"]
             direction TB
-            CD1["⑦ OIDC Auth + kubeconfig"]
-            CD2["⑧ Install ArgoCD CLI"]
-            CD3["⑨ argocd app sync\npayment-service · order-service"]
-            CD4["⑩ argocd app wait --health"]
-            CD5["⑪ Print sync status"]
-            CD1 --> CD2 --> CD3 --> CD4 --> CD5
+            CD1["⑨ OIDC Auth + kubeconfig"]
+            CD2["⑩ argocd login (via port-forward)"]
+            CD3["⑪ argocd app sync\npayment · order · ui"]
+            CD4["⑫ argocd app wait --health"]
+            CD1 --> CD2 --> CD3 --> CD4
         end
     end
 
-    ECR[("Amazon ECR\norder-service\npayment-service")]
+    ECR[("Amazon ECR")]
 
     subgraph EKS_BOX ["Amazon EKS"]
         ARGO["ArgoCD\nApplicationSet"]
-        ROLLOUTS["Argo Rollouts"]
-        APPS["apps-dev namespace\norder-service · payment-service"]
+        ROLLOUTS["Argo Rollouts\ncanary 20 → 50 → 100"]
+        APPS["apps-dev namespace"]
     end
 
     DEV -->|git push| REPO
-    REPO -->|on push/PR| CI
-    CI6 -->|CI success on main| CD
-    CI4 -->|image push| ECR
-    CI5 -->|values.yaml diff\nGitOps source of truth| ARGO
-    CD3 -->|explicit sync trigger| ARGO
-    ECR -->|image pull| APPS
+    REPO --> GITLEAKS
+    GITLEAKS --> IAC
+    GITLEAKS --> CI
+    CI --> HELM_LINT
+    HELM_LINT --> CD
+    CI7 --> ECR
+    CI8 -->|values.yaml diff| ARGO
+    CD3 -->|explicit sync| ARGO
+    ECR -->|pull image| APPS
     ARGO -->|ApplicationSet sync| APPS
-    ROLLOUTS -->|canary rollout| APPS
+    ROLLOUTS --> APPS
 ```
 
 ---
@@ -58,7 +72,8 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    DEV(["👨‍💻 Developer\ngit push"]) --> GITHUB
+    USER(["End user"]) -->|HTTP| ALB
+    DEV(["Developer\ngit push"]) --> GITHUB
 
     subgraph GITHUB ["GitHub"]
         REPO[(Repo\nHelm charts · k8s manifests)]
@@ -66,11 +81,12 @@ flowchart TD
     end
 
     subgraph AWS ["AWS Cloud — us-east-1"]
-        ECR[("Amazon ECR\norder-service\npayment-service")]
+        ECR[("Amazon ECR\norder-service · payment-service · ui")]
 
         subgraph VPC ["VPC — 3 Availability Zones  (us-east-1a / b / c)"]
             IGW["Internet Gateway"]
             NAT["NAT Gateway"]
+            ALB["Application\nLoad Balancer"]
 
             subgraph EKS ["Amazon EKS 1.30"]
 
@@ -84,12 +100,12 @@ flowchart TD
                 subgraph WORK ["Workload Nodes  — Karpenter-managed  (spot + on-demand)"]
 
                     subgraph APPS_NS ["apps-dev namespace"]
+                        SVC_UI["ui\nDeployment"]
                         SVC_PAY["payment-service\nArgo Rollout  ★ canary"]
                         SVC_ORD["order-service\nArgo Rollout  ★ canary"]
-                        SVC_UI["ui\nDeployment"]
                     end
 
-                    subgraph MON_NS ["monitoring namespace  ← Phase 3"]
+                    subgraph MON_NS ["monitoring namespace"]
                         PROM["Prometheus"]
                         GRAFANA["Grafana"]
                     end
@@ -101,12 +117,16 @@ flowchart TD
     REPO --> GHA
     GHA -->|push image| ECR
     GHA -->|update values.yaml + sync trigger| ARGOCD
+    ARGOCD -->|ApplicationSet sync| SVC_UI
     ARGOCD -->|ApplicationSet sync| SVC_PAY
     ARGOCD -->|ApplicationSet sync| SVC_ORD
+    ECR -->|pull image| SVC_UI
     ECR -->|pull image| SVC_PAY
     ECR -->|pull image| SVC_ORD
     ROLLOUTS_C -->|20% → 50% → 100%| SVC_PAY
     ROLLOUTS_C -->|20% → 50% → 100%| SVC_ORD
+    ALB --> SVC_UI
+    LBC -.->|provisions| ALB
     SVC_UI -->|HTTP| SVC_ORD
     SVC_UI -->|HTTP| SVC_PAY
     SVC_PAY -->|/metrics| PROM
@@ -123,7 +143,7 @@ flowchart TD
 flowchart LR
     START(["New image :sha\ndetected by ArgoCD"])
 
-    subgraph ROLLOUT ["Argo Rollouts — Canary Strategy"]
+    subgraph ROLLOUT ["Argo Rollouts — Canary Strategy  (defined in helm/<service>/values.yaml)"]
         S1["🟡 Canary  20%\nnew pods receive 1 in 5 requests"]
         P1["⏸ Pause  2 min\nwatch error rate + latency"]
         S2["🟠 Canary  50%\nhalf traffic shifted"]
@@ -132,8 +152,8 @@ flowchart LR
         S1 --> P1 --> S2 --> P2 --> S3
     end
 
-    OK(["✅ Rollout complete\nold pods terminated"])
-    ABORT(["❌ Manual abort\nargocd app rollback"])
+    OK(["✅ Rollout complete\nold ReplicaSet scaled down"])
+    ABORT(["❌ Manual abort\nkubectl argo rollouts abort"])
 
     START --> S1
     S3 --> OK
@@ -156,10 +176,10 @@ flowchart TD
     end
 
     subgraph MODS ["Terraform Modules — infra/modules/"]
-        MOD_VPC["vpc\n3-AZ VPC · public + private subnets\nNAT Gateway · Internet Gateway"]
-        MOD_ECR["ecr\nECR repos per service\nimage scanning enabled"]
+        MOD_VPC["vpc\n3-AZ VPC · public + private subnets\nNAT Gateway · Internet Gateway\nEKS + Karpenter discovery tags"]
+        MOD_ECR["ecr\nrepos: order · payment · ui\nscan-on-push · lifecycle policies"]
         MOD_EKS["eks  terraform-aws-modules/eks v20\nEKS 1.30 · CoreDNS · VPC-CNI\nEBS CSI · public + private endpoint"]
-        IRSA["IRSA Roles  (via iam-role-for-service-accounts-eks)\nEBS CSI · ALB Controller · Karpenter"]
+        IRSA["IRSA Roles  (iam-role-for-service-accounts-eks)\nEBS CSI · ALB Controller · Karpenter"]
         HELM_R["Helm Releases  (inside Terraform)\nAWS Load Balancer Controller v1.8.1\nKarpenter v0.37.0"]
         SQS["SQS Queue\nKarpenter spot interruption handling"]
     end
@@ -167,7 +187,7 @@ flowchart TD
     subgraph AWS_RES ["AWS Resources Provisioned"]
         RES_VPC[("VPC + Subnets")]
         RES_ECR[("ECR Registries")]
-        RES_EKS[("EKS Cluster\n+ Node Groups")]
+        RES_EKS[("EKS Cluster")]
         RES_NODES["System Node Group\nt3.medium × 2  tainted"]
         RES_WORK["Workload Node Group\nt3.large × 2  (baseline)"]
         RES_KARP["Karpenter NodePool\nspot + on-demand\nAuto consolidation"]
@@ -190,14 +210,15 @@ flowchart TD
 
 | Layer | Technology | Status |
 |---|---|---|
-| Infrastructure | Terraform + Terragrunt (VPC · ECR · EKS) | Code complete, not applied |
-| Container Registry | Amazon ECR | Code complete, not applied |
+| Infrastructure | Terraform + Terragrunt (VPC · ECR · EKS) | Code complete |
+| Container Registry | Amazon ECR — order · payment · ui | Code complete |
 | Node Autoscaling | Karpenter v0.37.0 + SQS spot interruption | Provisioned via Terraform |
 | Ingress | AWS Load Balancer Controller v1.8.1 | Provisioned via Terraform |
-| CI Pipeline | GitHub Actions — build · Trivy scan · push · helm lint | Done |
-| CD Pipeline | GitHub Actions → ArgoCD CLI sync | Done |
-| GitOps | ArgoCD v2.12.0 + ApplicationSet | Done |
-| Canary Deploys | Argo Rollouts v1.7.2 — 20% → 50% → 100% | Done |
-| App Services | FastAPI (Python) — order · payment · ui | Done |
-| Observability | Prometheus + Grafana | Local only — Phase 3 pending |
-| Secrets | — | Not yet implemented |
+| CI Pipeline | GitHub Actions — build · Trivy scan · push · helm lint | Complete |
+| DevSecOps | Gitleaks (hard) · pip-audit · Bandit · Trivy IaC (soft) | Complete |
+| CD Pipeline | GitHub Actions → ArgoCD CLI sync | Complete |
+| GitOps | ArgoCD v2.12.0 + ApplicationSet | Complete |
+| Canary Deploys | Argo Rollouts v1.7.2 — 20% → 50% → 100% (in Helm charts) | Complete |
+| App Services | FastAPI (Python) — order · payment · ui | Complete |
+| External Access | ALB Ingress on ui service | Complete |
+| Observability | kube-prometheus-stack (Prometheus + Grafana) | Complete |
