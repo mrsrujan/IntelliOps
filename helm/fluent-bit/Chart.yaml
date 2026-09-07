@@ -1,0 +1,9 @@
+apiVersion: v2
+name: fluent-bit
+description: IntelliOps log shipper — Fluent Bit DaemonSet to CloudWatch Logs
+type: application
+version: 0.1.0
+dependencies:
+  - name: fluent-bit
+    version: "0.46.10"
+    repository: https://fluent.github.io/helm-charts

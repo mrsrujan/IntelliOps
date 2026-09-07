@@ -20,7 +20,15 @@ kubectl rollout status deploy/argo-rollouts -n argo-rollouts --timeout=120s
 
 Write-Host "==> Applying ArgoCD Project and Applications"
 kubectl apply -f "$PSScriptRoot/../projects/"
-kubectl apply -f "$PSScriptRoot/../apps/"
+
+# Substitute ACCOUNT_ID_PLACEHOLDER in ArgoCD app manifests at apply time
+$AccountId = (aws sts get-caller-identity --query Account --output text).Trim()
+$TmpDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "intelliops-apps-$(Get-Random)")
+Get-ChildItem "$PSScriptRoot/../apps/*.yaml" | ForEach-Object {
+    (Get-Content $_.FullName) -replace 'ACCOUNT_ID_PLACEHOLDER', $AccountId | Set-Content (Join-Path $TmpDir.FullName $_.Name)
+}
+kubectl apply -f "$($TmpDir.FullName)/"
+Remove-Item -Recurse -Force $TmpDir.FullName
 
 Write-Host "`n==> ArgoCD initial admin password:"
 $EncodedPassword = kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}'

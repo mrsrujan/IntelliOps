@@ -1,63 +1,126 @@
+import logging
+import os
+import sys
+import uuid
+from contextvars import ContextVar
+
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
-import httpx, os
+from pythonjsonlogger import jsonlogger
+from starlette.requests import Request as StarletteRequest
 
+# ── Observability setup ─────────────────────────────────────────────────────────
+SERVICE_NAME = "ui"
+
+request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
+
+
+class ContextFilter(logging.Filter):
+    def filter(self, record):
+        record.request_id = request_id_ctx.get()
+        record.service = SERVICE_NAME
+        return True
+
+
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(jsonlogger.JsonFormatter(
+    "%(asctime)s %(service)s %(levelname)s %(request_id)s %(message)s",
+    rename_fields={"asctime": "timestamp", "levelname": "level"},
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
+))
+_handler.addFilter(ContextFilter())
+
+for name in ("", SERVICE_NAME, "uvicorn", "uvicorn.access", "uvicorn.error"):
+    lg = logging.getLogger(name)
+    lg.handlers = [_handler]
+    lg.setLevel(logging.INFO)
+    lg.propagate = False
+
+logger = logging.getLogger(SERVICE_NAME)
+
+# ── FastAPI app ────────────────────────────────────────────────────────────────
 app = FastAPI(title="IntelliOps UI")
 
-ORDER_SVC  = os.getenv("ORDER_SERVICE_URL",   "http://localhost:8082")
+ORDER_SVC   = os.getenv("ORDER_SERVICE_URL",   "http://localhost:8082")
 PAYMENT_SVC = os.getenv("PAYMENT_SERVICE_URL", "http://localhost:8081")
 
-# --- Proxy routes ---
 
+@app.middleware("http")
+async def request_id_middleware(request: StarletteRequest, call_next):
+    rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    token = request_id_ctx.set(rid)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = rid
+        return response
+    finally:
+        request_id_ctx.reset(token)
+
+
+async def upstream(method: str, url: str, **kwargs) -> httpx.Response:
+    """Propagate the current X-Request-ID to every backend call."""
+    headers = kwargs.pop("headers", {})
+    headers["X-Request-ID"] = request_id_ctx.get()
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        r = await c.request(method, url, headers=headers, **kwargs)
+    if r.status_code >= 500:
+        logger.warning("upstream_error", extra={
+            "method": method, "url": url, "status": r.status_code,
+        })
+    return r
+
+
+# ── Proxy routes ───────────────────────────────────────────────────────────────
 @app.get("/api/orders")
 async def list_orders():
-    async with httpx.AsyncClient() as c:
-        r = await c.get(f"{ORDER_SVC}/orders")
-        return r.json()
+    r = await upstream("GET", f"{ORDER_SVC}/orders")
+    return r.json()
+
 
 @app.post("/api/orders")
 async def create_order(req: Request):
     body = await req.json()
-    async with httpx.AsyncClient() as c:
-        r = await c.post(f"{ORDER_SVC}/orders", json=body)
-        return r.json()
+    r = await upstream("POST", f"{ORDER_SVC}/orders", json=body)
+    return r.json()
+
 
 @app.put("/api/orders/{order_id}/confirm")
 async def confirm_order(order_id: str):
-    async with httpx.AsyncClient() as c:
-        r = await c.put(f"{ORDER_SVC}/orders/{order_id}/confirm")
-        return r.json()
+    r = await upstream("PUT", f"{ORDER_SVC}/orders/{order_id}/confirm")
+    return r.json()
+
 
 @app.put("/api/orders/{order_id}/cancel")
 async def cancel_order(order_id: str):
-    async with httpx.AsyncClient() as c:
-        r = await c.put(f"{ORDER_SVC}/orders/{order_id}/cancel")
-        return r.json()
+    r = await upstream("PUT", f"{ORDER_SVC}/orders/{order_id}/cancel")
+    return r.json()
+
 
 @app.get("/api/payments")
 async def list_payments():
-    async with httpx.AsyncClient() as c:
-        r = await c.get(f"{PAYMENT_SVC}/payments")
-        return r.json()
+    r = await upstream("GET", f"{PAYMENT_SVC}/payments")
+    return r.json()
+
 
 @app.post("/api/pay")
 async def process_payment(req: Request):
     body = await req.json()
-    async with httpx.AsyncClient() as c:
-        r = await c.post(f"{PAYMENT_SVC}/pay", json=body)
-        return r.json()
+    r = await upstream("POST", f"{PAYMENT_SVC}/pay", json=body)
+    return r.json()
+
 
 @app.post("/api/refund/{payment_id}")
 async def refund(payment_id: str):
-    async with httpx.AsyncClient() as c:
-        r = await c.post(f"{PAYMENT_SVC}/refund/{payment_id}")
-        return r.json()
+    r = await upstream("POST", f"{PAYMENT_SVC}/refund/{payment_id}", json={})
+    return r.json()
 
-# --- UI ---
 
+# ── UI ─────────────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 def ui():
     return HTML
+
 
 HTML = """<!DOCTYPE html>
 <html lang="en">

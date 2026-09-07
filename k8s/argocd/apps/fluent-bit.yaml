@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fluent-bit
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: intelliops
+  source:
+    repoURL: https://github.com/mrsrujan/IntelliOps
+    targetRevision: main
+    path: helm/fluent-bit
+    helm:
+      valueFiles:
+        - values.yaml
+      # ACCOUNT_ID_PLACEHOLDER is substituted by bootstrap.sh before apply.
+      parameters:
+        - name: fluent-bit.serviceAccount.annotations.eks\.amazonaws\.com/role-arn
+          value: "arn:aws:iam::ACCOUNT_ID_PLACEHOLDER:role/intelliops-dev-fluentbit"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: logging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

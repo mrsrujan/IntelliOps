@@ -23,7 +23,16 @@ kubectl rollout status deploy/argo-rollouts -n argo-rollouts --timeout=120s
 
 echo "==> Applying ArgoCD Project and Applications"
 kubectl apply -f "$(dirname "$0")/../projects/"
-kubectl apply -f "$(dirname "$0")/../apps/"
+
+# Some ArgoCD Applications embed the AWS account ID (for IRSA role ARNs).
+# Substitute it at bootstrap time so we never commit the account ID to git.
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+TMPDIR=$(mktemp -d)
+for f in "$(dirname "$0")"/../apps/*.yaml; do
+  sed "s/ACCOUNT_ID_PLACEHOLDER/${ACCOUNT_ID}/g" "$f" > "$TMPDIR/$(basename "$f")"
+done
+kubectl apply -f "$TMPDIR/"
+rm -rf "$TMPDIR"
 
 echo ""
 echo "==> ArgoCD initial admin password:"
