@@ -36,6 +36,13 @@ except Exception as e:
 
 def lambda_handler(event, context):
     anomaly = _parse_anomaly(event)
+
+    # Only DeployRegression triggers a rollback approval — everything else is
+    # handled by the auto-remediator or is RCA-only.
+    if anomaly["anomaly_type"] != "DeployRegression":
+        logger.info(f"skip_non_regression type={anomaly['anomaly_type']}")
+        return {"statusCode": 200, "skipped": True}
+
     incident_id = f"rb-{uuid.uuid4().hex[:12]}"
     service = anomaly["service"]
     argocd_app = f"{service}-dev"  # matches ApplicationSet naming
@@ -59,6 +66,15 @@ def _parse_anomaly(event: dict) -> dict:
         msg = json.loads(event["Records"][0]["Sns"]["Message"])
     else:
         msg = event
+
+    if "AlarmName" in msg:
+        parts = msg["AlarmName"].split("-", 3)
+        return {
+            "service": parts[3] if len(parts) > 3 else "unknown",
+            "anomaly_type": parts[2] if len(parts) > 2 else "DeployRegression",
+            "metric": msg.get("Trigger", {}).get("MetricName") or msg["AlarmName"],
+            "timestamp": msg.get("StateChangeTime", datetime.utcnow().isoformat()),
+        }
 
     return {
         "service": msg.get("service", "unknown"),

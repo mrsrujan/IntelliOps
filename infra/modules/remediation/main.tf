@@ -171,13 +171,12 @@ resource "aws_lambda_function" "remediator" {
 }
 
 resource "aws_sns_topic_subscription" "remediator" {
-  topic_arn           = var.anomalies_topic_arn
-  protocol            = "lambda"
-  endpoint            = aws_lambda_function.remediator.arn
-  filter_policy_scope = "MessageBody"
-  filter_policy = jsonencode({
-    anomaly_type = ["HighCPU", "MemoryPressure", "NodeNotReady", "RestartRequest"]
-  })
+  topic_arn = var.anomalies_topic_arn
+  protocol  = "lambda"
+  endpoint  = aws_lambda_function.remediator.arn
+  # No filter policy: CloudWatch alarm messages don't carry `anomaly_type`
+  # at the top level, so we do the routing inside the Lambda instead
+  # (see handler.py — unknown types return statusCode 200 with skipped=true).
 }
 
 resource "aws_lambda_permission" "remediator_sns" {
@@ -201,13 +200,11 @@ resource "aws_lambda_function" "rollback_request" {
 }
 
 resource "aws_sns_topic_subscription" "rollback_request" {
-  topic_arn           = var.anomalies_topic_arn
-  protocol            = "lambda"
-  endpoint            = aws_lambda_function.rollback_request.arn
-  filter_policy_scope = "MessageBody"
-  filter_policy = jsonencode({
-    anomaly_type = ["DeployRegression"]
-  })
+  topic_arn = var.anomalies_topic_arn
+  protocol  = "lambda"
+  endpoint  = aws_lambda_function.rollback_request.arn
+  # Routing happens in the Lambda handler — see the DeployRegression check
+  # early in handler.py which returns without posting to Slack otherwise.
 }
 
 resource "aws_lambda_permission" "rollback_request_sns" {

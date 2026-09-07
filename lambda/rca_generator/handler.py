@@ -68,16 +68,35 @@ def lambda_handler(event, context):
 
 def _parse_anomaly(event: dict) -> dict:
     """
-    Accept either:
-      - SNS event  ({"Records": [{"Sns": {"Message": "..."}}]})
-      - Direct invoke with the anomaly object as event
+    Accept three sources:
+      1. SNS wrapper around a CloudWatch alarm state change
+      2. SNS wrapper around a direct-publish anomaly (aws sns publish)
+      3. Direct Lambda invoke with the anomaly object as event
     """
     if "Records" in event and event["Records"][0].get("Sns"):
         msg = json.loads(event["Records"][0]["Sns"]["Message"])
     else:
         msg = event
 
-    # Normalise required fields — set sensible defaults if the source is sparse
+    # CloudWatch alarm format — reshape into our anomaly schema.
+    # Alarm names follow the convention: intelliops-<env>-<AnomalyType>-<service>
+    if "AlarmName" in msg:
+        parts = msg["AlarmName"].split("-", 3)
+        anomaly_type = parts[2] if len(parts) > 2 else "generic_anomaly"
+        service = parts[3] if len(parts) > 3 else "unknown"
+        trigger = msg.get("Trigger", {})
+        return {
+            "service": service,
+            "anomaly_type": anomaly_type,
+            "metric": trigger.get("MetricName") or msg["AlarmName"],
+            "value": trigger.get("Threshold"),
+            "threshold": trigger.get("Threshold"),
+            "timestamp": msg.get("StateChangeTime", datetime.utcnow().isoformat()),
+            "source": "cloudwatch_alarm",
+            "state_reason": msg.get("NewStateReason", ""),
+        }
+
+    # Direct-publish anomaly (existing schema)
     return {
         "service": msg.get("service", "unknown"),
         "anomaly_type": msg.get("anomaly_type", "generic_anomaly"),

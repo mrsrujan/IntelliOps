@@ -42,13 +42,16 @@ def lambda_handler(event, context):
     try:
         if anomaly_type in ("HighCPU", "MemoryPressure"):
             result = actions.scale_rollout(APPS_NAMESPACE, service, target_replicas=10)
+        elif anomaly_type == "HighErrorRate":
+            # Elevated 5xx is often a stuck-state — restart the Rollout first
+            result = actions.restart_rollout(APPS_NAMESPACE, service)
         elif anomaly_type == "RestartRequest":
             result = actions.restart_rollout(APPS_NAMESPACE, service)
         elif anomaly_type == "NodeNotReady":
             node_name = anomaly.get("node") or anomaly.get("metric", "").split(":")[-1]
             result = actions.cordon_node(node_name)
         else:
-            logger.warning(f"unhandled_anomaly_type: {anomaly_type}")
+            logger.info(f"skip_unhandled_type type={anomaly_type}")
             return {"statusCode": 200, "skipped": True}
 
         audit.record(
@@ -80,6 +83,18 @@ def _parse_anomaly(event: dict) -> dict:
         msg = json.loads(event["Records"][0]["Sns"]["Message"])
     else:
         msg = event
+
+    # CloudWatch alarm format — reshape into our schema.
+    # Alarm naming convention: intelliops-<env>-<AnomalyType>-<service>
+    if "AlarmName" in msg:
+        parts = msg["AlarmName"].split("-", 3)
+        return {
+            "service": parts[3] if len(parts) > 3 else "unknown",
+            "anomaly_type": parts[2] if len(parts) > 2 else "generic_anomaly",
+            "metric": msg.get("Trigger", {}).get("MetricName") or msg["AlarmName"],
+            "node": None,
+            "timestamp": msg.get("StateChangeTime", datetime.utcnow().isoformat()),
+        }
 
     return {
         "service": msg.get("service", "unknown"),
