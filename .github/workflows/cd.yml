@@ -9,6 +9,7 @@ on:
 env:
   AWS_REGION: us-east-1
   CLUSTER_NAME: intelliops-dev
+  APPS: payment-service-dev order-service-dev ui-dev
 
 jobs:
   deploy:
@@ -49,19 +50,21 @@ jobs:
             --password "$ARGOCD_PASSWORD" \
             --insecure
 
-      - name: Sync payment-service
-        run: argocd app sync payment-service --force --timeout 120
-
-      - name: Sync order-service
-        run: argocd app sync order-service --force --timeout 120
+      - name: Sync applications
+        run: |
+          for app in $APPS; do
+            argocd app sync $app --force --timeout 120
+          done
 
       - name: Wait for healthy
         run: |
-          argocd app wait payment-service --health --timeout 180
-          argocd app wait order-service --health --timeout 180
+          for app in $APPS; do
+            argocd app wait $app --health --timeout 300
+          done
 
       - name: Print sync status
         if: always()
         run: |
-          argocd app get payment-service
-          argocd app get order-service
+          for app in $APPS; do
+            argocd app get $app
+          done

@@ -23,7 +23,7 @@ kubectl rollout status deploy/argo-rollouts -n argo-rollouts --timeout=120s
 
 echo "==> Applying ArgoCD Project and Applications"
 kubectl apply -f "$(dirname "$0")/../projects/"
-kubectl apply -f "$(dirname "$0")/../apps/applicationset.yaml"
+kubectl apply -f "$(dirname "$0")/../apps/"
 
 echo ""
 echo "==> ArgoCD initial admin password:"

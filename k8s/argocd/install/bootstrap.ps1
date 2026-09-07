@@ -20,7 +20,7 @@ kubectl rollout status deploy/argo-rollouts -n argo-rollouts --timeout=120s
 
 Write-Host "==> Applying ArgoCD Project and Applications"
 kubectl apply -f "$PSScriptRoot/../projects/"
-kubectl apply -f "$PSScriptRoot/../apps/applicationset.yaml"
+kubectl apply -f "$PSScriptRoot/../apps/"
 
 Write-Host "`n==> ArgoCD initial admin password:"
 $EncodedPassword = kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}'

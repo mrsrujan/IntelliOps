@@ -1,23 +1,23 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
 metadata:
-  name: {{ include "payment-service.fullname" . }}
+  name: {{ include "order-service.fullname" . }}
   labels:
-    {{- include "payment-service.labels" . | nindent 4 }}
+    {{- include "order-service.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "payment-service.selectorLabels" . | nindent 6 }}
+      {{- include "order-service.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "payment-service.selectorLabels" . | nindent 8 }}
+        {{- include "order-service.selectorLabels" . | nindent 8 }}
       annotations:
         {{- toYaml .Values.podAnnotations | nindent 8 }}
     spec:
       containers:
-        - name: payment-service
+        - name: order-service
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
@@ -37,3 +37,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+  strategy:
+    canary:
+      steps:
+        {{- toYaml .Values.canary.steps | nindent 8 }}

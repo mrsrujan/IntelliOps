@@ -41,3 +41,13 @@ podAnnotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "8080"
   prometheus.io/path: "/metrics"
+
+canary:
+  steps:
+    - setWeight: 20
+    - pause:
+        duration: 2m
+    - setWeight: 50
+    - pause:
+        duration: 2m
+    - setWeight: 100

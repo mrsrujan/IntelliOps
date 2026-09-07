@@ -1,5 +1,5 @@
 locals {
-  repos = ["payment-service", "order-service"]
+  repos = ["payment-service", "order-service", "ui"]
 }
 
 resource "aws_ecr_repository" "this" {
