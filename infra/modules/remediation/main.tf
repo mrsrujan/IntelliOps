@@ -25,22 +25,11 @@ resource "null_resource" "build" {
     req = filesha256("${local.lambda_root}/${each.value}/requirements.txt")
   }
 
-  # `cd` before the glob so the shell doesn't need to expand `*.py` against
-  # an absolute path (unreliable on Git Bash Windows), and `python -m pip`
-  # instead of `pip` (pip.exe shim isn't always on PATH).
+  # Invoke a small Python builder instead of shelling to bash — see
+  # lambda/build_function.py for why (bash on Windows can't cd into "C:/…"
+  # paths reliably; Python's pathlib handles them cross-platform).
   provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-    command     = <<-EOT
-      set -e
-      BUILD="${local.build_root}/${each.value}"
-      SRC="${local.lambda_root}/${each.value}"
-      rm -rf "$BUILD"
-      mkdir -p "$BUILD"
-      cd "$SRC"
-      cp *.py "$BUILD/"
-      python -m pip install --quiet --disable-pip-version-check \
-        -r requirements.txt -t "$BUILD/"
-    EOT
+    command = "python \"${local.lambda_root}/build_function.py\" \"${local.lambda_root}/${each.value}\" \"${local.build_root}/${each.value}\""
   }
 }
 
