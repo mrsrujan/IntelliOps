@@ -1,9 +1,11 @@
 locals {
-  # abspath() normalises the ../../.. walk-up from the terragrunt.hcl side
-  # into a clean absolute path — Git Bash on Windows chokes on paths that
-  # combine a "C:/" prefix with ../ components, so we resolve them here.
+  # abspath() normalises the ../../.. walk-up from terragrunt.hcl into a
+  # clean absolute path. Windows cmd.exe mangles arguments that contain
+  # ../ segments, so we abspath() EVERY path handed to local-exec —
+  # including the build script itself.
   lambda_src_dir   = abspath("${var.lambda_source_root}/rca_generator")
   lambda_build_dir = abspath("${path.module}/build/rca_generator")
+  build_script     = abspath("${var.lambda_source_root}/build_function.py")
 }
 
 # ── Build step: install deps and stage the Lambda source ───────────────────────
@@ -28,7 +30,7 @@ resource "null_resource" "build_rca_lambda" {
   # is what Python's Windows installer registers on PATH — the `python.exe`
   # shim isn't always present. On Linux/Mac swap to `python3`.
   provisioner "local-exec" {
-    command = "py \"${var.lambda_source_root}/build_function.py\" \"${local.lambda_src_dir}\" \"${local.lambda_build_dir}\""
+    command = "py \"${local.build_script}\" \"${local.lambda_src_dir}\" \"${local.lambda_build_dir}\""
   }
 }
 
