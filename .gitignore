@@ -35,3 +35,6 @@ secrets.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Microsoft Office lock files (~$ prefix when a doc is open)
+~$*
