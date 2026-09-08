@@ -20,18 +20,11 @@ resource "null_resource" "build_rca_lambda" {
     requirements     = filemd5("${local.lambda_src_dir}/requirements.txt")
   }
 
+  # Invoke a small Python builder instead of shelling to bash — bash on
+  # Windows (Git Bash / MSYS) can't reliably `cd` into paths that start
+  # with "C:/", but Python's pathlib works identically on every OS.
   provisioner "local-exec" {
-    command     = <<-EOT
-      set -e
-      rm -rf "${local.lambda_build_dir}"
-      mkdir -p "${local.lambda_build_dir}"
-      cd "${local.lambda_src_dir}"
-      cp *.py "${local.lambda_build_dir}/"
-      python -m pip install --quiet --disable-pip-version-check \
-        -r requirements.txt \
-        -t "${local.lambda_build_dir}/"
-    EOT
-    interpreter = ["bash", "-c"]
+    command = "python \"${var.lambda_source_root}/build_function.py\" \"${local.lambda_src_dir}\" \"${local.lambda_build_dir}\""
   }
 }
 
