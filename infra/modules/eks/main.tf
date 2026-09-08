@@ -161,7 +161,7 @@ resource "helm_release" "karpenter" {
   repository = "oci://public.ecr.aws/karpenter"
   chart      = "karpenter"
   namespace  = "karpenter"
-  version    = "1.1.0"
+  version    = "1.5.2" # Karpenter compatibility: K8s 1.33 needs >= 1.5, K8s 1.34 needs >= 1.8
 
   create_namespace = true
   timeout          = 600 # 10 min — pulling the OCI image + CRDs can take a while
