@@ -26,12 +26,12 @@ resource "null_resource" "build" {
     req = filesha256("${local.lambda_root}/${each.value}/requirements.txt")
   }
 
-  # Invoke a small Python builder instead of shelling to bash — see
-  # lambda/build_function.py for why. Using `py` (Windows Python launcher)
-  # because the `python.exe` shim isn't always on PATH — the launcher is.
-  # On Linux/Mac swap to `python3`.
+  # PowerShell interpreter (not the default cmd.exe) — see the lambda
+  # module's build step for why. cmd mangles quoted paths starting with
+  # a drive letter; PowerShell doesn't.
   provisioner "local-exec" {
-    command = "py \"${local.build_script}\" \"${local.lambda_root}/${each.value}\" \"${local.build_root}/${each.value}\""
+    interpreter = ["powershell", "-NoProfile", "-Command"]
+    command     = "& py '${local.build_script}' '${local.lambda_root}/${each.value}' '${local.build_root}/${each.value}'"
   }
 }
 
