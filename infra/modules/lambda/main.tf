@@ -1,13 +1,15 @@
 locals {
-  # var.lambda_source_root is an absolute path passed from terragrunt.hcl
-  # (see the terragrunt include). We can't use relative paths from path.module
-  # because Terragrunt copies the module into .terragrunt-cache/HASH/HASH/
-  # and the "../../../lambda" walk-up misses the real source tree.
-  lambda_src_dir   = "${var.lambda_source_root}/rca_generator"
-  lambda_build_dir = "${path.module}/build/rca_generator"
+  # abspath() normalises the ../../.. walk-up from the terragrunt.hcl side
+  # into a clean absolute path — Git Bash on Windows chokes on paths that
+  # combine a "C:/" prefix with ../ components, so we resolve them here.
+  lambda_src_dir   = abspath("${var.lambda_source_root}/rca_generator")
+  lambda_build_dir = abspath("${path.module}/build/rca_generator")
 }
 
 # ── Build step: install deps and stage the Lambda source ───────────────────────
+# Uses `cd` before the glob so the shell doesn't have to expand `*.py` against
+# an absolute path (still fragile on Windows), and `python -m pip` instead of
+# `pip` (the pip.exe shim isn't always on PATH but python.exe usually is).
 resource "null_resource" "build_rca_lambda" {
   triggers = {
     handler          = filemd5("${local.lambda_src_dir}/handler.py")
@@ -20,12 +22,14 @@ resource "null_resource" "build_rca_lambda" {
 
   provisioner "local-exec" {
     command     = <<-EOT
-      rm -rf ${local.lambda_build_dir}
-      mkdir -p ${local.lambda_build_dir}
-      cp ${local.lambda_src_dir}/*.py ${local.lambda_build_dir}/
-      pip install --quiet --disable-pip-version-check \
-        -r ${local.lambda_src_dir}/requirements.txt \
-        -t ${local.lambda_build_dir}/
+      set -e
+      rm -rf "${local.lambda_build_dir}"
+      mkdir -p "${local.lambda_build_dir}"
+      cd "${local.lambda_src_dir}"
+      cp *.py "${local.lambda_build_dir}/"
+      python -m pip install --quiet --disable-pip-version-check \
+        -r requirements.txt \
+        -t "${local.lambda_build_dir}/"
     EOT
     interpreter = ["bash", "-c"]
   }

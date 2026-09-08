@@ -3,7 +3,10 @@
 # copies module source into .terragrunt-cache/HASH/HASH/, so any relative
 # walk-up from path.module lands nowhere.
 locals {
-  lambda_root = var.lambda_source_root
+  # abspath() normalises the walk-up so Git Bash on Windows doesn't choke
+  # on paths that mix "C:/" prefix with ../ components.
+  lambda_root = abspath(var.lambda_source_root)
+  build_root  = abspath("${path.module}/build")
   lambdas = {
     remediator        = "remediator"        # auto-action: scale / restart / cordon
     rollback_request  = "rollback_request"  # posts Slack approval message
@@ -22,14 +25,21 @@ resource "null_resource" "build" {
     req = filesha256("${local.lambda_root}/${each.value}/requirements.txt")
   }
 
+  # `cd` before the glob so the shell doesn't need to expand `*.py` against
+  # an absolute path (unreliable on Git Bash Windows), and `python -m pip`
+  # instead of `pip` (pip.exe shim isn't always on PATH).
   provisioner "local-exec" {
     interpreter = ["bash", "-c"]
     command     = <<-EOT
-      BUILD=${path.module}/build/${each.value}
-      rm -rf $BUILD && mkdir -p $BUILD
-      cp ${local.lambda_root}/${each.value}/*.py $BUILD/
-      pip install --quiet --disable-pip-version-check \
-        -r ${local.lambda_root}/${each.value}/requirements.txt -t $BUILD/
+      set -e
+      BUILD="${local.build_root}/${each.value}"
+      SRC="${local.lambda_root}/${each.value}"
+      rm -rf "$BUILD"
+      mkdir -p "$BUILD"
+      cd "$SRC"
+      cp *.py "$BUILD/"
+      python -m pip install --quiet --disable-pip-version-check \
+        -r requirements.txt -t "$BUILD/"
     EOT
   }
 }
@@ -37,7 +47,7 @@ resource "null_resource" "build" {
 data "archive_file" "zip" {
   for_each   = local.lambdas
   type       = "zip"
-  source_dir = "${path.module}/build/${each.value}"
+  source_dir = "${local.build_root}/${each.value}"
   output_path = "${path.module}/${each.value}.zip"
   depends_on = [null_resource.build]
 }
