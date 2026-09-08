@@ -1,8 +1,8 @@
 # Bootstrap ArgoCD + Argo Rollouts on a Kubernetes cluster (kind or EKS)
 $ErrorActionPreference = "Stop"
 
-$ARGOCD_VERSION = "v2.12.0"
-$ROLLOUTS_VERSION = "v1.7.2"
+$ARGOCD_VERSION = "v3.0.0"
+$ROLLOUTS_VERSION = "v1.8.0"
 
 Write-Host "==> Installing ArgoCD $ARGOCD_VERSION"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -

@@ -1,8 +1,13 @@
-# ── Container Insights ────────────────────────────────────────────────────────
-# The `amazon-cloudwatch-observability` add-on installs both the CloudWatch
-# agent (for pod CPU/memory metrics) and a Fluent Bit DaemonSet. We already
-# have Fluent Bit from Phase 3, so we disable the add-on's log shipping to
-# avoid double-shipping every container log.
+# ── Container Insights + Application Signals ─────────────────────────────────
+# The `amazon-cloudwatch-observability` add-on installs the CloudWatch agent
+# (pod CPU/memory metrics for Container Insights) and a Fluent Bit DaemonSet.
+# We already have Fluent Bit from Phase 3, so we disable the add-on's log
+# shipping to avoid double-shipping every container log.
+#
+# We also opt in to Application Signals — AWS's OpenTelemetry-based APM/
+# tracing layer bundled with the add-on. Free to enable, billed per span.
+# Provides golden-signal SLOs and distributed traces without a separate
+# X-Ray/Jaeger install.
 resource "aws_eks_addon" "cloudwatch" {
   cluster_name = var.eks_cluster_name
   addon_name   = "amazon-cloudwatch-observability"
@@ -10,6 +15,20 @@ resource "aws_eks_addon" "cloudwatch" {
   configuration_values = jsonencode({
     containerLogs = {
       enabled = false
+    }
+    agent = {
+      config = {
+        traces = {
+          traces_collected = {
+            application_signals = {}
+          }
+        }
+        logs = {
+          metrics_collected = {
+            application_signals = {}
+          }
+        }
+      }
     }
   })
 }
