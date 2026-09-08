@@ -29,8 +29,14 @@ resource "null_resource" "build_rca_lambda" {
   # We use `py` (Python launcher) rather than `python` because the launcher
   # is what Python's Windows installer registers on PATH — the `python.exe`
   # shim isn't always present. On Linux/Mac swap to `python3`.
+  # PowerShell interpreter (not the default cmd.exe) because cmd mangles
+  # quoted arguments starting with drive-letter paths — it forwards the
+  # literal quoted string to `py`, which then treats it as a relative
+  # path and Python tries to open a filename that includes the quotes.
+  # PowerShell parses & quotes cleanly.
   provisioner "local-exec" {
-    command = "py \"${local.build_script}\" \"${local.lambda_src_dir}\" \"${local.lambda_build_dir}\""
+    interpreter = ["powershell", "-NoProfile", "-Command"]
+    command     = "& py '${local.build_script}' '${local.lambda_src_dir}' '${local.lambda_build_dir}'"
   }
 }
 
