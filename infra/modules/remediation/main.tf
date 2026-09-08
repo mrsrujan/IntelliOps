@@ -26,10 +26,11 @@ resource "null_resource" "build" {
   }
 
   # Invoke a small Python builder instead of shelling to bash — see
-  # lambda/build_function.py for why (bash on Windows can't cd into "C:/…"
-  # paths reliably; Python's pathlib handles them cross-platform).
+  # lambda/build_function.py for why. Using `py` (Windows Python launcher)
+  # because the `python.exe` shim isn't always on PATH — the launcher is.
+  # On Linux/Mac swap to `python3`.
   provisioner "local-exec" {
-    command = "python \"${local.lambda_root}/build_function.py\" \"${local.lambda_root}/${each.value}\" \"${local.build_root}/${each.value}\""
+    command = "py \"${local.lambda_root}/build_function.py\" \"${local.lambda_root}/${each.value}\" \"${local.build_root}/${each.value}\""
   }
 }
 
