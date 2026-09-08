@@ -86,7 +86,7 @@ Step-by-step AWS deployment with cost controls in [`construct.md`](construct.md)
 | Layer | Technology |
 |---|---|
 | Infrastructure | Terraform + Terragrunt (10 per-module units) |
-| Cloud | AWS — VPC · EKS 1.30 · ECR · ALB · Kinesis · DynamoDB · Bedrock · Secrets Manager · CloudWatch · API Gateway |
+| Cloud | AWS — VPC · EKS 1.33 · ECR · ALB · Kinesis · DynamoDB · Bedrock · Secrets Manager · CloudWatch · API Gateway |
 | Autoscaling | Karpenter (spot + on-demand) · HPA |
 | CI/CD | GitHub Actions → ArgoCD |
 | GitOps | ArgoCD v2.12 + ApplicationSet |

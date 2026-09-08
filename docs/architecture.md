@@ -101,7 +101,7 @@ flowchart TD
             NAT["NAT Gateway"]
             ALB["Application\nLoad Balancer"]
 
-            subgraph EKS ["Amazon EKS 1.30"]
+            subgraph EKS ["Amazon EKS 1.33"]
 
                 subgraph SYS ["System Node Group  (tainted)"]
                     ARGOCD["ArgoCD\n+ ApplicationSet"]
@@ -297,7 +297,7 @@ flowchart TD
     subgraph MODS ["Terraform Modules — infra/modules/"]
         M_VPC[vpc<br/>3-AZ · NAT · IGW · EKS tags]
         M_ECR[ecr<br/>order · payment · ui + lifecycle]
-        M_EKS[eks<br/>1.30 · Karpenter · LBC · IRSA]
+        M_EKS[eks<br/>1.33 · Karpenter v1 · LBC · IRSA]
         M_LOGS[logs<br/>Log Group · Fluent Bit IRSA]
         M_KIN[kinesis<br/>metrics + events streams]
         M_DDB[dynamodb<br/>incidents + service GSI]
@@ -360,7 +360,7 @@ flowchart LR
 |---|---|---|
 | Infrastructure | Terraform + Terragrunt (10 modules) | Code complete |
 | Container Registry | Amazon ECR — order · payment · ui | Code complete |
-| Cluster | Amazon EKS 1.30 + Karpenter + IRSA + AWS LB Controller | Code complete |
+| Cluster | Amazon EKS 1.33 + Karpenter v1 + IRSA + AWS LB Controller | Code complete |
 | Log Pipeline | Fluent Bit DaemonSet → CloudWatch Logs (structured JSON) | Code complete |
 | Metrics | Prometheus + Grafana + kube-prometheus-stack | Code complete |
 | CloudWatch | Container Insights + metric-filter alarms + SNS | Code complete |

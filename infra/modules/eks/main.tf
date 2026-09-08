@@ -1,9 +1,9 @@
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20.0"
+  version = "~> 21.0"
 
   cluster_name    = "${var.project}-${var.environment}"
-  cluster_version = "1.30"
+  cluster_version = "1.33"
 
   cluster_endpoint_public_access  = true
   cluster_endpoint_private_access = true
@@ -141,7 +141,7 @@ resource "helm_release" "aws_lbc" {
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
   namespace  = "kube-system"
-  version    = "1.8.1"
+  version    = "1.11.0"
 
   set {
     name  = "clusterName"
