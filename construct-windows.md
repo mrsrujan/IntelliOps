@@ -218,13 +218,13 @@ aws s3 ls | Select-String intelliops-tfstate-dev
 
 ## Step 5: Request Bedrock Model Access
 
-**🎯 What we're achieving:** By default, no Bedrock foundation model is invokable in your account. You need to explicitly request access to Claude Sonnet 4.6 so the RCA Lambda can call it. Approval is instant for Anthropic models on personal accounts.
+**🎯 What we're achieving:** Getting Anthropic Claude usable in your account. AWS retired the old "Manage model access" page in 2025 — serverless foundation models are now enabled by default in every commercial region, but **Anthropic models still require a one-time usage form** the first time you invoke them.
 
-1. Go to **https://console.aws.amazon.com/bedrock/home?region=us-east-1#/modelaccess**
-2. Click **Manage model access** (top-right)
-3. Find **Anthropic → Claude Sonnet 4.6** (or the latest available Claude Sonnet version)
-4. Check the box, submit at the bottom
-5. Wait ~30 seconds — refresh — status should be **Access granted**
+1. Go to **https://console.aws.amazon.com/bedrock/** (region: `us-east-1`)
+2. Left sidebar → **Chat / Text playground**
+3. Pick a model → **Anthropic → Claude Sonnet 4.6** (or latest available)
+4. If a "Submit use case details" form appears, fill it in and submit — approval is typically instant for personal accounts
+5. Send any test message in the playground to confirm access
 
 **Verify from PowerShell:**
 

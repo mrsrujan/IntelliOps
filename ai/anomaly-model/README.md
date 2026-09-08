@@ -6,10 +6,11 @@ alongside the runtime path (which uses managed anomaly detection).
 
 ## Why this exists
 
-The runtime anomaly pipeline in this project uses **managed AWS services**
-(CloudWatch Alarms with anomaly-detection bands, optionally Lookout for
-Metrics) because they need no training data, no endpoint to manage, and
-no ~$70/month baseline cost.
+The runtime anomaly pipeline in this project uses **CloudWatch Alarms
+with anomaly-detection bands** because they need no training data, no
+endpoint to manage, and no ~$70/month baseline cost. (Amazon Lookout
+for Metrics was AWS's other managed-ML anomaly option — it was retired
+in October 2025.)
 
 This notebook shows what the alternative — a **bring-your-own LSTM** — would
 look like, using the same synthetic traffic pattern the runtime path

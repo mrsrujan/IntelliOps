@@ -172,7 +172,7 @@ export TF_VAR_llm_model="bedrock/anthropic.claude-sonnet-4-6-v1:0"
 # export TF_VAR_gemini_api_key="AIza..."
 ```
 
-For Bedrock: make sure you've **requested model access** for Claude Sonnet 4.6 in the Bedrock console (Bedrock → Model access). This takes ~1 minute of approval time.
+For Bedrock: AWS retired the "Manage model access" page in 2025. Serverless foundation models are now enabled by default in commercial regions, but Anthropic models require a **one-time usage form** — open the Bedrock console at https://console.aws.amazon.com/bedrock/, go to the Chat playground, pick Claude Sonnet 4.6, and fill in the form if prompted. Approval is instant for personal accounts.
 
 ---
 
@@ -394,7 +394,7 @@ CI hasn't run yet, so `helm/<service>/values.yaml` still has `repository: ""`. E
 - Manually set: `sed -i "s|repository:.*|repository: \"$ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/intelliops/order-service\"|" helm/order-service/values.yaml` and commit.
 
 **Bedrock returns AccessDeniedException**
-You haven't requested access to Claude Sonnet 4.6 in the Bedrock console. Bedrock → Model access → Manage model access → check Anthropic Claude models → Save.
+You haven't completed the one-time Anthropic usage form. Open the Bedrock console → Chat playground → pick a Claude model → submit the use-case form when prompted. Access is instant for personal accounts. (AWS retired the old "Manage model access" page in 2025 — the playground flow is now the canonical way in.)
 
 **Fluent Bit pods CrashLoopBackOff**
 The `ACCOUNT_ID_PLACEHOLDER` sed step in bootstrap.sh didn't run. Verify:

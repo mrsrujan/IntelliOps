@@ -34,7 +34,7 @@ data "archive_file" "rca_lambda_zip" {
   depends_on  = [null_resource.build_rca_lambda]
 }
 
-# ── SNS topic — anomaly source (CloudWatch alarms / Lookout / manual publish) ─
+# ── SNS topic — anomaly source (CloudWatch alarms or manual publish) ─────────
 resource "aws_sns_topic" "anomalies" {
   name = "${var.project}-${var.environment}-anomalies"
 }
