@@ -48,4 +48,12 @@ inputs = {
   dynamodb_table_name  = dependency.dynamodb.outputs.incidents_table_name
   dynamodb_table_arn   = dependency.dynamodb.outputs.incidents_table_arn
   cloudwatch_log_group = dependency.logs.outputs.log_group_name
+
+  # Absolute path to /lambda in the repo, computed from where this
+  # terragrunt.hcl lives. Terragrunt copies the module source into
+  # .terragrunt-cache/HASH/HASH/, so any relative path from path.module
+  # inside the module points at a phantom location.
+  #   get_terragrunt_dir() = <repo>/infra/envs/dev/lambda
+  #   ../../../../lambda  = <repo>/lambda
+  lambda_source_root = "${get_terragrunt_dir()}/../../../../lambda"
 }

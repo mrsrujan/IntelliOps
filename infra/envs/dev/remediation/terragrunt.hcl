@@ -51,4 +51,8 @@ inputs = {
   dynamodb_table_arn        = dependency.dynamodb.outputs.incidents_table_arn
   shared_secrets_arns       = dependency.llm.outputs.secrets_arns
   slack_webhook_secret_name = dependency.llm.outputs.lambda_env.SLACK_SECRET_NAME
+
+  # Absolute path to /lambda in the repo — Terragrunt's module-cache
+  # copy invalidates relative paths from within the module.
+  lambda_source_root = "${get_terragrunt_dir()}/../../../../lambda"
 }

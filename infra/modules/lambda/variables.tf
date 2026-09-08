@@ -36,3 +36,8 @@ variable "cloudwatch_log_group" {
   type        = string
   description = "Log group the Lambda queries for RCA context"
 }
+
+variable "lambda_source_root" {
+  type        = string
+  description = "Absolute path to the repo's /lambda directory. Passed from terragrunt.hcl using get_terragrunt_dir() because Terragrunt's module-copy step invalidates relative paths."
+}

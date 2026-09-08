@@ -1,5 +1,9 @@
 locals {
-  lambda_src_dir   = "${path.module}/../../../lambda/rca_generator"
+  # var.lambda_source_root is an absolute path passed from terragrunt.hcl
+  # (see the terragrunt include). We can't use relative paths from path.module
+  # because Terragrunt copies the module into .terragrunt-cache/HASH/HASH/
+  # and the "../../../lambda" walk-up misses the real source tree.
+  lambda_src_dir   = "${var.lambda_source_root}/rca_generator"
   lambda_build_dir = "${path.module}/build/rca_generator"
 }
 

@@ -1,6 +1,9 @@
 # ── Shared Lambda source builder ──────────────────────────────────────────────
+# var.lambda_source_root is absolute, passed from terragrunt.hcl. Terragrunt
+# copies module source into .terragrunt-cache/HASH/HASH/, so any relative
+# walk-up from path.module lands nowhere.
 locals {
-  lambda_root = "${path.module}/../../../lambda"
+  lambda_root = var.lambda_source_root
   lambdas = {
     remediator        = "remediator"        # auto-action: scale / restart / cordon
     rollback_request  = "rollback_request"  # posts Slack approval message
