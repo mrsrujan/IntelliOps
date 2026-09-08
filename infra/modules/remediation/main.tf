@@ -3,10 +3,11 @@
 # copies module source into .terragrunt-cache/HASH/HASH/, so any relative
 # walk-up from path.module lands nowhere.
 locals {
-  # abspath() normalises the walk-up so Git Bash on Windows doesn't choke
-  # on paths that mix "C:/" prefix with ../ components.
-  lambda_root = abspath(var.lambda_source_root)
-  build_root  = abspath("${path.module}/build")
+  # abspath() normalises the walk-up so Windows cmd.exe doesn't mangle
+  # arguments that contain ../ components.
+  lambda_root  = abspath(var.lambda_source_root)
+  build_root   = abspath("${path.module}/build")
+  build_script = abspath("${var.lambda_source_root}/build_function.py")
   lambdas = {
     remediator        = "remediator"        # auto-action: scale / restart / cordon
     rollback_request  = "rollback_request"  # posts Slack approval message
@@ -30,7 +31,7 @@ resource "null_resource" "build" {
   # because the `python.exe` shim isn't always on PATH — the launcher is.
   # On Linux/Mac swap to `python3`.
   provisioner "local-exec" {
-    command = "py \"${local.lambda_root}/build_function.py\" \"${local.lambda_root}/${each.value}\" \"${local.build_root}/${each.value}\""
+    command = "py \"${local.build_script}\" \"${local.lambda_root}/${each.value}\" \"${local.build_root}/${each.value}\""
   }
 }
 
