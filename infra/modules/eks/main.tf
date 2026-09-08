@@ -164,19 +164,32 @@ resource "helm_release" "karpenter" {
   version    = "1.1.0"
 
   create_namespace = true
+  timeout          = 600 # 10 min — pulling the OCI image + CRDs can take a while
 
-  set {
-    name  = "settings.clusterName"
-    value = module.eks.cluster_name
-  }
-  set {
-    name  = "settings.interruptionQueue"
-    value = aws_sqs_queue.karpenter_interruption.name
-  }
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.karpenter_irsa.iam_role_arn
-  }
+  # Bundle all values in one yaml block so we can express arrays and maps
+  # (tolerations, nodeSelector) cleanly. The controller pods must tolerate
+  # the CriticalAddonsOnly taint on our system nodes, otherwise they stay
+  # Pending forever and helm_release times out.
+  values = [yamlencode({
+    settings = {
+      clusterName       = module.eks.cluster_name
+      interruptionQueue = aws_sqs_queue.karpenter_interruption.name
+    }
+    serviceAccount = {
+      annotations = {
+        "eks.amazonaws.com/role-arn" = module.karpenter_irsa.iam_role_arn
+      }
+    }
+    # Pin the controller to system nodes and tolerate the taint that keeps
+    # non-critical workloads off them.
+    nodeSelector = {
+      role = "system"
+    }
+    tolerations = [{
+      key      = "CriticalAddonsOnly"
+      operator = "Exists"
+    }]
+  })]
 
   depends_on = [module.eks]
 }
