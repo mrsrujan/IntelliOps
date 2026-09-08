@@ -23,8 +23,12 @@ resource "null_resource" "build_rca_lambda" {
   # Invoke a small Python builder instead of shelling to bash — bash on
   # Windows (Git Bash / MSYS) can't reliably `cd` into paths that start
   # with "C:/", but Python's pathlib works identically on every OS.
+  #
+  # We use `py` (Python launcher) rather than `python` because the launcher
+  # is what Python's Windows installer registers on PATH — the `python.exe`
+  # shim isn't always present. On Linux/Mac swap to `python3`.
   provisioner "local-exec" {
-    command = "python \"${var.lambda_source_root}/build_function.py\" \"${local.lambda_src_dir}\" \"${local.lambda_build_dir}\""
+    command = "py \"${var.lambda_source_root}/build_function.py\" \"${local.lambda_src_dir}\" \"${local.lambda_build_dir}\""
   }
 }
 
