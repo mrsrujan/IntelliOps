@@ -67,3 +67,8 @@ variable "lambda_source_root" {
   type        = string
   description = "Absolute path to the repo's /lambda directory. Passed from terragrunt.hcl using get_terragrunt_dir() because Terragrunt's module-copy step invalidates relative paths."
 }
+
+variable "lambda_artifacts_bucket" {
+  type        = string
+  description = "S3 bucket for Lambda deployment zips. Provided by the lambda module's output; too large for direct-upload Create/UpdateFunction API."
+}

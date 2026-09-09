@@ -47,6 +47,30 @@ data "archive_file" "rca_lambda_zip" {
   depends_on  = [null_resource.build_rca_lambda]
 }
 
+# ── S3 bucket for Lambda zip artifacts ───────────────────────────────────────
+# LiteLLM + its provider SDKs push the RCA Lambda zip past AWS's 70MB
+# direct-upload API limit, so we upload via S3 (250MB max unzipped).
+data "aws_caller_identity" "current" {}
+
+resource "aws_s3_bucket" "lambda_artifacts" {
+  bucket        = "${var.project}-${var.environment}-lambda-${data.aws_caller_identity.current.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_versioning" "lambda_artifacts" {
+  bucket = aws_s3_bucket.lambda_artifacts.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_object" "rca_lambda_zip" {
+  bucket      = aws_s3_bucket.lambda_artifacts.id
+  key         = "rca_generator/${data.archive_file.rca_lambda_zip.output_base64sha256}.zip"
+  source      = data.archive_file.rca_lambda_zip.output_path
+  source_hash = data.archive_file.rca_lambda_zip.output_base64sha256
+}
+
 # ── SNS topic — anomaly source (CloudWatch alarms or manual publish) ─────────
 resource "aws_sns_topic" "anomalies" {
   name = "${var.project}-${var.environment}-anomalies"
@@ -141,7 +165,8 @@ resource "aws_iam_role_policy" "dynamodb_write" {
 
 # ── Lambda function ────────────────────────────────────────────────────────────
 resource "aws_lambda_function" "rca_generator" {
-  filename         = data.archive_file.rca_lambda_zip.output_path
+  s3_bucket        = aws_s3_bucket.lambda_artifacts.id
+  s3_key           = aws_s3_object.rca_lambda_zip.key
   source_code_hash = data.archive_file.rca_lambda_zip.output_base64sha256
   function_name    = "${var.project}-${var.environment}-rca-generator"
   role             = aws_iam_role.rca_lambda.arn

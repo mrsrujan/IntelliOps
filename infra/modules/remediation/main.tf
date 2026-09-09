@@ -43,6 +43,15 @@ data "archive_file" "zip" {
   depends_on = [null_resource.build]
 }
 
+# ── S3 upload for Lambda zips (shared bucket from the lambda module) ─────────
+resource "aws_s3_object" "zip" {
+  for_each    = local.lambdas
+  bucket      = var.lambda_artifacts_bucket
+  key         = "${each.value}/${data.archive_file.zip[each.key].output_base64sha256}.zip"
+  source      = data.archive_file.zip[each.key].output_path
+  source_hash = data.archive_file.zip[each.key].output_base64sha256
+}
+
 # ── IAM role shared by all remediation Lambdas ────────────────────────────────
 resource "aws_iam_role" "remediation" {
   name = "${var.project}-${var.environment}-remediation"
@@ -163,7 +172,8 @@ locals {
 
 # ── Lambda: remediator — handles auto-actions (scale / restart / cordon) ─────
 resource "aws_lambda_function" "remediator" {
-  filename         = data.archive_file.zip["remediator"].output_path
+  s3_bucket        = var.lambda_artifacts_bucket
+  s3_key           = aws_s3_object.zip["remediator"].key
   source_code_hash = data.archive_file.zip["remediator"].output_base64sha256
   function_name    = "${var.project}-${var.environment}-remediator"
   role             = aws_iam_role.remediation.arn
@@ -192,7 +202,8 @@ resource "aws_lambda_permission" "remediator_sns" {
 
 # ── Lambda: rollback_request — posts Slack approval message ──────────────────
 resource "aws_lambda_function" "rollback_request" {
-  filename         = data.archive_file.zip["rollback_request"].output_path
+  s3_bucket        = var.lambda_artifacts_bucket
+  s3_key           = aws_s3_object.zip["rollback_request"].key
   source_code_hash = data.archive_file.zip["rollback_request"].output_base64sha256
   function_name    = "${var.project}-${var.environment}-rollback-request"
   role             = aws_iam_role.remediation.arn
@@ -220,7 +231,8 @@ resource "aws_lambda_permission" "rollback_request_sns" {
 
 # ── Lambda: rollback_execute — invoked by API Gateway on Slack button click ──
 resource "aws_lambda_function" "rollback_execute" {
-  filename         = data.archive_file.zip["rollback_execute"].output_path
+  s3_bucket        = var.lambda_artifacts_bucket
+  s3_key           = aws_s3_object.zip["rollback_execute"].key
   source_code_hash = data.archive_file.zip["rollback_execute"].output_base64sha256
   function_name    = "${var.project}-${var.environment}-rollback-execute"
   role             = aws_iam_role.remediation.arn

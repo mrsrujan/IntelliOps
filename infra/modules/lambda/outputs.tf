@@ -13,3 +13,8 @@ output "anomalies_topic_arn" {
 output "anomalies_topic_name" {
   value = aws_sns_topic.anomalies.name
 }
+
+output "lambda_artifacts_bucket" {
+  value       = aws_s3_bucket.lambda_artifacts.id
+  description = "S3 bucket used to host Lambda deployment zips (shared with remediation module)"
+}
