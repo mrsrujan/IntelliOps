@@ -165,3 +165,131 @@ If a recruiter or hiring manager clicks the link, the README's Mermaid diagram l
 - Include the GitHub link inline — recruiters click 60%+ of the time when it's right there
 - Match the length to your CV's other project entries — a 2-line CV project among 6-bullet ones looks lazy, and vice versa
 - If the CV template supports a "Selected Projects" section with 3-4 items, this one goes first (because AI + infra is a rare combination)
+
+---
+
+# Interviewer Questions — Prepared Answers
+
+Two questions come up in almost every interview once they see IntelliOps on your resume. Here are the answers, structured so you can rehearse them at three lengths depending on how much runway the interviewer gives you.
+
+---
+
+## Q1: "Explain me about your project."
+
+This is the opener. The interviewer wants to see whether you can **structure a technical explanation**, not just recite features. Lead with the **problem**, then the **shape** of the solution, then the **differentiator**, and finish with an **invitation to dig deeper**.
+
+### 30-second version (elevator / callback screen)
+
+> IntelliOps is an AWS EKS platform I built where LLMs analyze production anomalies and Lambda functions autonomously remediate them. When CloudWatch fires an alarm, three Lambdas subscribe — one calls Claude on Bedrock to generate a plain-English root cause using live logs and past incidents, one auto-remediates safe things like scaling pods or cordoning nodes, and one posts a Slack approval flow for risky actions like deployment rollback. The LLM layer is provider-agnostic via LiteLLM — same code path works with Bedrock, OpenAI, or Gemini, chosen at deploy time by one Terraform variable.
+
+### 90-second version (standard first-round interview)
+
+> The problem I wanted to solve: most monitoring stacks give you alerts, but not answers. You get paged at 2 AM and spend the first 20 minutes reading dashboards trying to figure out what changed. I wanted to build a system where the alert itself arrives with a root-cause narrative, and the safe remediations happen without me having to do anything.
+>
+> So I built IntelliOps. It's an AWS EKS 1.33 cluster with GitOps via ArgoCD, canary deploys via Argo Rollouts — the standard cloud-native platform pieces. On top of that I layered an AI-driven remediation loop:
+>
+> 1. Structured logs from FastAPI services ship to CloudWatch via Fluent Bit
+> 2. CloudWatch alarms detect anomalies — error rate spikes, CPU pressure, memory pressure
+> 3. Alarms publish to SNS, which fans out to **three Lambdas in parallel**
+> 4. The first is an RCA Lambda — it uses LiteLLM to call Claude Sonnet 4.6 on Bedrock, giving Claude the last 30 minutes of error logs plus similar past incidents from a DynamoDB audit table. Claude returns a structured response with root cause, blast radius, recommended action, and a confidence rating. That goes to Slack.
+> 5. The second is a remediator Lambda that talks to the EKS API through IRSA and Access Entries. Safe categories — CPU high, memory pressure, node not ready — auto-execute scale, restart, or cordon.
+> 6. The third handles risky actions. If it's a deployment regression, we don't auto-rollback — we post an interactive Slack message with Approve / Reject buttons. Clicking Approve round-trips through API Gateway to a rollback Lambda that HMAC-verifies the Slack signature and calls the ArgoCD API.
+>
+> The whole loop is under 3 minutes end-to-end. And because I used LiteLLM as the abstraction layer, the LLM provider is a deploy-time choice — one Terraform variable switches between Bedrock, OpenAI GPT-4o, or Gemini 2.0 without any code change.
+>
+> What was interesting to build was the tiered remediation model — figuring out which actions are safe enough to auto-execute versus which need a human in the loop. Happy to go deeper on any layer.
+
+### 2-3 minute version (deep-dive / panel interview)
+
+Same as the 90-second version, plus these follow-ons after each layer:
+
+**After "Structured logs":** Every service emits JSON logs with an `X-Request-ID` header propagated end-to-end, so Claude can trace one user action across order-service, payment-service, and the UI. That correlation is what makes the RCA specific instead of generic.
+
+**After "CloudWatch alarms detect anomalies":** I made a deliberate choice to use CloudWatch Anomaly Detection alarms instead of building a custom SageMaker LSTM. The LSTM notebook is in the repo as an ML artifact showing I *can* build the model, but the runtime uses managed detectors to avoid a $72/month SageMaker endpoint. It's a "right tool for the job" call I documented explicitly.
+
+**After "The first is an RCA Lambda":** The prompt is deliberately structured — I ask Claude for root cause, blast radius, recommended action, and confidence, in that order, under 200 words. Structured output means the Slack message is scannable and consistent regardless of which LLM provider is behind it.
+
+**After "The second is a remediator Lambda":** The EKS API access from Lambda was actually the hardest part. Lambda runs outside the cluster, and the Kubernetes API server won't accept just any IAM identity. I ended up generating STS-signed presigned URLs the way `aws eks get-token` does internally — no `eks-token` package dependency, just boto3. Then EKS Access Entries map the Lambda's IAM role to a Kubernetes group with the specific verbs remediation needs. Clean and modern — no `aws-auth` ConfigMap editing.
+
+**After "The third handles risky actions":** The Slack callback flow is a real production security concern. Anyone could send a POST to my API Gateway URL. I verify Slack's HMAC-SHA256 signature over the raw request body against the app's signing secret, with a 5-minute freshness window so replay attacks fail. That's the standard Slack Bolt pattern implemented from scratch.
+
+**Closing:** The whole project has 15 commits telling a real engineering story — Phase 1 through Phase 6 plus documentation. About 3,500 lines of Terraform in 10 modular Terragrunt units, ~1,200 lines of Python across 4 Lambdas, plus the service code. Full teardown returns to $0 in about 15 minutes, so I can spin the whole thing up for a demo and destroy it after.
+
+### Delivery tips
+
+- **Never lead with the tech stack.** "I used Kubernetes, Terraform, Lambda…" bores interviewers instantly. Lead with the problem.
+- **Use the phrase "under 3 minutes end-to-end"** — it's concrete and memorable.
+- **Say "LiteLLM" out loud once.** Not everyone knows it. If they don't ask, you can drop a one-line explanation: "LiteLLM is an open-source library that gives one unified API for a hundred-plus LLM providers." Signals current knowledge.
+- **Finish with an invitation:** "Happy to go deeper on any layer" or "Which part would be most useful to walk through?" — puts the interviewer in the driver's seat instead of monologuing.
+
+---
+
+## Q2: "Are there any direct tools or AWS services that already do this?"
+
+This is a **challenge question** — and a really important one. The interviewer wants to know:
+
+1. **Are you aware of the AWS / vendor landscape?** (If you say "no, nothing like this exists," you look naive.)
+2. **Did you choose custom vs. managed thoughtfully?** (Or did you build this because you didn't know the alternatives?)
+3. **Can you defend your architectural decisions when pushed?**
+
+The right answer acknowledges the alternatives honestly, explains what they *do* cover, and then explains the specific gap IntelliOps fills. Never say "there's nothing like this" — always say "here's what's out there, here's where the gap is."
+
+### The honest answer (60 seconds)
+
+> Yes, absolutely — there are several. The closest managed AWS equivalents are **Amazon DevOps Guru** for anomaly detection and recommendations, **Amazon Q Developer** and **Amazon Q for CloudWatch** for natural-language log queries, and **AWS Systems Manager Automation** for runbook-style remediation. On the third-party side, **Datadog Watchdog**, **Dynatrace Davis AI**, and **PagerDuty AIOps** all do variations of anomaly detection with AI-assisted RCA.
+>
+> What none of them do out-of-the-box is the specific combination IntelliOps does:
+>
+> - **Provider-agnostic LLM** — DevOps Guru and Q use AWS-hosted models with no choice; Datadog and Dynatrace use their own models. If your organization has a policy about which LLM vendors are approved, or you want to A/B test Claude vs GPT-4o for RCA quality, these tools don't let you.
+> - **Custom prompt engineering** — DevOps Guru returns templated recommendations, not narratives. Amazon Q gives generic answers about AWS docs. IntelliOps hands Claude the actual error logs plus similar past incidents from DynamoDB, so the RCA is specific to *your* workload's history.
+> - **Kubernetes-native auto-remediation** — DevOps Guru fires alerts; you wire up the remediation yourself with Systems Manager or Lambda. IntelliOps closes the loop end-to-end.
+> - **Human-in-loop rollback** with signed callbacks — none of the managed services have a pattern this specific.
+>
+> The way I'd frame it in a real production context: use DevOps Guru or Datadog as a *complementary* layer, not a replacement. They handle the broad set of AWS resources very well. IntelliOps-style custom logic handles the domain-specific parts — the parts where you actually understand your service better than a generic ML model does. In practice you'd probably use both.
+
+### The shorter, more confident answer (30 seconds)
+
+> Yes — Amazon DevOps Guru is the closest managed equivalent, plus Datadog Watchdog and Dynatrace Davis on the third-party side. They all do good anomaly detection with generic AI-assisted RCA. What they don't do is let you choose your LLM provider, use your workload's actual log history for prompts, or close the loop with Kubernetes-native auto-remediation. In production you'd probably use them alongside something like IntelliOps rather than instead of.
+
+### Follow-up hooks the interviewer might use
+
+If they push further, be ready with:
+
+**"So why didn't you just use DevOps Guru?"**
+> Two reasons. First, this is a portfolio project — I wanted to demonstrate that I can build the pipeline myself, not just enable a managed service. Second, DevOps Guru gives you black-box ML with no customization. If you want to tune the anomaly threshold, adjust the RCA prompt, or add new remediation actions, you can't. IntelliOps is opinionated but every piece is transparent and modifiable.
+
+**"Isn't this reinventing the wheel?"**
+> Partially, yes — and I'd absolutely use managed services for standard-case monitoring in production. What's not reinvention is the *LLM abstraction layer* and the *tiered remediation model*. Those aren't offered as products anywhere I've seen. The custom parts are the parts worth writing; the standard parts I lifted from managed offerings where I could.
+
+**"How would you scale this to a hundred services?"**
+> The current design already scales — the Lambdas are stateless, CloudWatch alarms scale linearly per metric, SNS fan-out handles thousands of events per second. The bottleneck would be Bedrock token cost, which scales with the number of alarms firing, not services deployed. At a hundred services, I'd add: PromQL-based custom alarms per service using ServiceMonitor, a batching layer that groups related alarms into single incidents before invoking the RCA Lambda, and probably a caching layer for common RCA responses.
+
+**"What would you change if you built this again?"**
+> Three things. One, I'd start with a Kubernetes-native admission-controlled autoscaler (Karpenter with Provisioners v1 from day one — I had to migrate from v1beta1). Two, I'd move the rollback Lambda into the VPC from day one so it can reach ArgoCD's ClusterIP service; right now it's a dry-run for that reason. Three, I'd use Bedrock Guardrails to filter PII from prompts before Claude sees them — for a portfolio it's fine, but production absolutely needs that.
+
+### Comparison table (memorise the shape, not the details)
+
+If you want to have a visual reference ready:
+
+| Capability | DevOps Guru | Datadog Watchdog | Dynatrace Davis | **IntelliOps** |
+|---|---|---|---|---|
+| Anomaly detection | ✅ Managed ML | ✅ Managed ML | ✅ Managed ML | ✅ CloudWatch alarms (managed) + optional LSTM |
+| AI-generated RCA narrative | Templated | Generic | Generic | ✅ Custom Claude prompt with your logs + incident history |
+| Choose your LLM provider | ❌ AWS-hosted only | ❌ Datadog-only | ❌ Dynatrace-only | ✅ Bedrock / OpenAI / Gemini (deploy-time flag) |
+| K8s-aware auto-remediation | ❌ Recommendations only | ❌ | Partial | ✅ EKS API via IRSA |
+| Human-approved rollback with signed callback | ❌ | ❌ | ❌ | ✅ Slack HMAC callback via API Gateway |
+| Custom prompt engineering | ❌ | ❌ | Limited | ✅ Full control |
+| Setup complexity | Low | Low | Low | Higher (but transparent) |
+| Cost model | Per resource ($$$ at scale) | Per host ($$$) | Per host ($$$) | Pay per Bedrock token + minimal AWS glue |
+
+The pattern to notice: managed services trade **customization** for **low setup**. IntelliOps trades higher setup for full control. Both are valid — depends on the workload and team.
+
+---
+
+## Bonus: the "why did you build this" question
+
+Sometimes the interviewer skips the technical opener and asks the softer question: *why did you build this?* Prepared answer:
+
+> Two reasons. First, I wanted to prove to myself that I could combine three disciplines that usually live in separate teams — Platform Engineering, SRE, and MLOps — into one coherent architecture. Most portfolio projects show one layer; I wanted mine to span the whole story. Second, I think the direction the industry is going is AI-augmented operations — not chatbots, but LLMs as operational primitives inside real event pipelines. I wanted hands-on experience designing that pattern before it becomes standard, so I could bring it into a team already having done it once.
+
+That answer signals: strategic thinking, cross-discipline range, and forward-looking curiosity. All qualities you want on the record.
