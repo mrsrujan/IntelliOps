@@ -18,7 +18,8 @@ dependency "eks" {
 dependency "lambda" {
   config_path = "../lambda"
   mock_outputs = {
-    anomalies_topic_arn = "arn:aws:sns:us-east-1:123456789012:mock-topic"
+    anomalies_topic_arn     = "arn:aws:sns:us-east-1:123456789012:mock-topic"
+    lambda_artifacts_bucket = "mock-lambda-bucket"
   }
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan"]
 }
@@ -55,4 +56,7 @@ inputs = {
   # Absolute path to /lambda in the repo — Terragrunt's module-cache
   # copy invalidates relative paths from within the module.
   lambda_source_root = "${get_terragrunt_dir()}/../../../../lambda"
+
+  # Reuse the S3 bucket the lambda module creates for its Lambda zip.
+  lambda_artifacts_bucket = dependency.lambda.outputs.lambda_artifacts_bucket
 }
