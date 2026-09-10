@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: "573978149165.dkr.ecr.us-east-1.amazonaws.com/intelliops/ui"
-  tag: 6afe5a8bdb619b70942a9a53018303473161b790
+  tag: 5922f3a5858da337a0cf4bb02ea797572cca8b92
   pullPolicy: IfNotPresent
 
 service:
