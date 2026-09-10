@@ -128,7 +128,12 @@ resource "aws_eks_access_entry" "remediation" {
 resource "aws_eks_access_policy_association" "remediation" {
   cluster_name  = var.eks_cluster_name
   principal_arn = aws_iam_role.remediation.arn
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminPolicy"
+  # ClusterAdmin (full cluster-admin bind) rather than Admin (namespace-scoped).
+  # Argo Rollouts CRD verbs come from the argo-rollouts-aggregate-to-admin
+  # ClusterRole which merges into `admin`, but the Access Entry only actually
+  # binds `admin` if `access_scope.type = "namespace"` with an explicit list.
+  # `AmazonEKSClusterAdminPolicy` + `type = cluster` binds cluster-admin.
+  policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
   access_scope {
     type = "cluster"

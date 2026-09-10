@@ -1,2 +1,2 @@
-litellm==1.100.0
+litellm==1.91.5
 requests==2.32.3

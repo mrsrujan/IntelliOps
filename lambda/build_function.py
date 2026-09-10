@@ -41,9 +41,17 @@ def main() -> None:
 
     requirements = src / "requirements.txt"
     if requirements.exists():
+        # Cross-target the Lambda runtime (Linux x86_64, Python 3.12) — without
+        # these flags pip installs wheels for the local interpreter/platform,
+        # and packages with native code (pydantic_core, tokenizers, ...) fail
+        # to import on Lambda with "No module named X._X" errors.
         subprocess.check_call([
             sys.executable, "-m", "pip", "install",
             "--quiet", "--disable-pip-version-check",
+            "--platform", "manylinux2014_x86_64",
+            "--python-version", "3.12",
+            "--implementation", "cp",
+            "--only-binary=:all:",
             "-r", str(requirements),
             "-t", str(build),
         ])
