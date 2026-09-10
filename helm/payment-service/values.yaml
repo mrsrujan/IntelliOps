@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: "573978149165.dkr.ecr.us-east-1.amazonaws.com/intelliops/payment-service"
-  tag: 5922f3a5858da337a0cf4bb02ea797572cca8b92
+  tag: e5db44675425758f1bd7877bd555d2d19ef5f366
   pullPolicy: IfNotPresent
 
 service:
