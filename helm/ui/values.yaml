@@ -1,8 +1,8 @@
 replicaCount: 1
 
 image:
-  repository: ""   # set by CI: <account>.dkr.ecr.us-east-1.amazonaws.com/intelliops/ui
-  tag: latest
+  repository: "573978149165.dkr.ecr.us-east-1.amazonaws.com/intelliops/ui"
+  tag: 6afe5a8bdb619b70942a9a53018303473161b790
   pullPolicy: IfNotPresent
 
 service:
