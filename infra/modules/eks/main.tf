@@ -30,13 +30,31 @@ module "eks" {
     }
   }
 
+  # Prefix delegation on vpc-cni bumps t3.small pod capacity from 8 to ~110.
+  # Kubelet's --max-pods is set at bootstrap and doesn't auto-follow the CNI
+  # config, so we force it here via NodeConfig YAML injected pre-nodeadm on
+  # each nodegroup (see cloudinit_pre_nodeadm below). ENABLE_PREFIX_DELEGATION
+  # is set on the vpc-cni addon manually via aws-cli after cluster bring-up.
   eks_managed_node_groups = {
     system = {
       name           = "system"
-      instance_types = ["t3.medium"]
-      min_size       = 2
-      max_size       = 4
-      desired_size   = 2
+      instance_types = ["t3.small"]
+      min_size       = 1
+      max_size       = 2
+      desired_size   = 1
+      cloudinit_pre_nodeadm = [{
+        content_type = "application/node.eks.aws"
+        content      = <<-EOT
+          apiVersion: node.eks.aws/v1alpha1
+          kind: NodeConfig
+          spec:
+            kubelet:
+              config:
+                maxPods: 110
+              flags:
+                - --max-pods=110
+        EOT
+      }]
       labels = {
         role = "system"
       }
@@ -49,10 +67,23 @@ module "eks" {
 
     workload = {
       name           = "workload"
-      instance_types = ["t3.large", "t3a.large"]
+      instance_types = ["t3.small", "t3a.small"]
       min_size       = 1
-      max_size       = 10
-      desired_size   = 2
+      max_size       = 3
+      desired_size   = 3
+      cloudinit_pre_nodeadm = [{
+        content_type = "application/node.eks.aws"
+        content      = <<-EOT
+          apiVersion: node.eks.aws/v1alpha1
+          kind: NodeConfig
+          spec:
+            kubelet:
+              config:
+                maxPods: 110
+              flags:
+                - --max-pods=110
+        EOT
+      }]
       labels = {
         role = "workload"
       }
@@ -189,6 +220,15 @@ resource "helm_release" "karpenter" {
       key      = "CriticalAddonsOnly"
       operator = "Exists"
     }]
+    # Free-Tier-restricted account only allows t3.small; the chart's default
+    # 2×1Gi memory request doesn't fit alongside coredns on a single node.
+    replicas = 1
+    controller = {
+      resources = {
+        requests = { cpu = "200m", memory = "384Mi" }
+        limits   = { cpu = "1", memory = "512Mi" }
+      }
+    }
   })]
 
   depends_on = [module.eks]

@@ -19,8 +19,8 @@ variable "llm_provider" {
 
 variable "llm_model" {
   type        = string
-  default     = "bedrock/anthropic.claude-sonnet-4-6-v1:0"
-  description = "Model identifier passed to LiteLLM"
+  default     = "bedrock/us.anthropic.claude-sonnet-4-6"
+  description = "Model identifier passed to LiteLLM. Bedrock Sonnet 4.6 is only available via the us.* inference profile."
 }
 
 variable "openai_api_key" {
