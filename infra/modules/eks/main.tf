@@ -23,6 +23,16 @@ module "eks" {
     vpc-cni = {
       most_recent    = true
       before_compute = true
+      # Prefix delegation multiplies pod capacity per ENI. Without this,
+      # t3.small caps at 8 pods per node which the workload stack blows
+      # through. Kubelet's --max-pods is raised to match via the
+      # cloudinit_pre_nodeadm NodeConfig on each managed nodegroup below.
+      configuration_values = jsonencode({
+        env = {
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
     }
     aws-ebs-csi-driver = {
       most_recent              = true

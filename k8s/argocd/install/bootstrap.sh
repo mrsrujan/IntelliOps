@@ -13,6 +13,40 @@ kubectl apply -n argocd \
 echo "==> Waiting for ArgoCD server to be ready"
 kubectl rollout status deploy/argocd-server -n argocd --timeout=120s
 
+# ── ArgoCD v3 no longer auto-creates argocd-initial-admin-secret, and the
+# built-in cluster destination is no longer implicit either. Seed both here
+# so the CD workflow (`kubectl get secret argocd-initial-admin-secret`) and
+# the ApplicationSet (`destination.server: https://kubernetes.default.svc`)
+# both keep working out of the box.
+echo "==> Seeding ArgoCD admin password + in-cluster destination"
+if ! kubectl -n argocd get secret argocd-initial-admin-secret >/dev/null 2>&1; then
+  ADMIN_PW=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+  ADMIN_HASH=$(kubectl -n argocd exec deploy/argocd-server -- \
+    argocd account bcrypt --password "$ADMIN_PW")
+  kubectl -n argocd patch secret argocd-secret --type merge -p \
+    "{\"stringData\":{\"admin.password\":\"$ADMIN_HASH\",\"admin.passwordMtime\":\"$(date -u +%FT%TZ)\"}}"
+  kubectl -n argocd create secret generic argocd-initial-admin-secret \
+    --from-literal=password="$ADMIN_PW"
+  kubectl -n argocd rollout restart deploy/argocd-server
+  kubectl -n argocd rollout status deploy/argocd-server --timeout=120s
+fi
+
+kubectl apply -f - <<'YAML'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: in-cluster
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+type: Opaque
+stringData:
+  name: in-cluster
+  server: https://kubernetes.default.svc
+  config: |
+    {"tlsClientConfig":{"insecure":false}}
+YAML
+
 echo "==> Installing Argo Rollouts ${ROLLOUTS_VERSION}"
 kubectl create namespace argo-rollouts --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -n argo-rollouts \

@@ -11,6 +11,44 @@ kubectl apply -n argocd -f "https://raw.githubusercontent.com/argoproj/argo-cd/$
 Write-Host "==> Waiting for ArgoCD server to be ready"
 kubectl rollout status deploy/argocd-server -n argocd --timeout=120s
 
+# ArgoCD v3 no longer auto-creates argocd-initial-admin-secret, and the
+# built-in cluster destination is no longer implicit either. Seed both here
+# so the CD workflow (`kubectl get secret argocd-initial-admin-secret`) and
+# the ApplicationSet (`destination.server: https://kubernetes.default.svc`)
+# both keep working out of the box.
+Write-Host "==> Seeding ArgoCD admin password + in-cluster destination"
+$secretExists = $true
+try { kubectl -n argocd get secret argocd-initial-admin-secret 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { $secretExists = $false } } catch { $secretExists = $false }
+if (-not $secretExists) {
+    $bytes = New-Object byte[] 18
+    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $AdminPw = [Convert]::ToBase64String($bytes) -replace '[/+=]', '' | ForEach-Object { $_.Substring(0,24) }
+    $AdminHash = (kubectl -n argocd exec deploy/argocd-server -- argocd account bcrypt --password $AdminPw).Trim()
+    $mtime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $patch = "{`"stringData`":{`"admin.password`":`"$AdminHash`",`"admin.passwordMtime`":`"$mtime`"}}"
+    kubectl -n argocd patch secret argocd-secret --type merge -p $patch
+    kubectl -n argocd create secret generic argocd-initial-admin-secret --from-literal=password=$AdminPw
+    kubectl -n argocd rollout restart deploy/argocd-server
+    kubectl -n argocd rollout status deploy/argocd-server --timeout=120s
+}
+
+$InClusterSecret = @'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: in-cluster
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+type: Opaque
+stringData:
+  name: in-cluster
+  server: https://kubernetes.default.svc
+  config: |
+    {"tlsClientConfig":{"insecure":false}}
+'@
+$InClusterSecret | kubectl apply -f -
+
 Write-Host "==> Installing Argo Rollouts $ROLLOUTS_VERSION"
 kubectl create namespace argo-rollouts --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -n argo-rollouts -f "https://github.com/argoproj/argo-rollouts/releases/download/${ROLLOUTS_VERSION}/install.yaml"
