@@ -905,10 +905,20 @@ If any of these return non-empty results, that resource is still billing. Delete
 
 | Symptom | Fix |
 |---|---|
-| Bedrock returns `AccessDeniedException` | Model access not granted — repeat Step 5 |
+| Bedrock returns `AccessDeniedException` | Model access not granted — repeat Step 5. Note: Claude Sonnet 4.6 needs the `us.*` inference-profile ID, e.g. `bedrock/us.anthropic.claude-sonnet-4-6` — not `bedrock/anthropic.claude-sonnet-4-6-v1:0`. Already the default in Terraform. |
+| Bedrock returns `RateLimitError: Too many tokens per day` | Free-Tier accounts have a low per-day token quota. Wait for reset (UTC midnight) or switch provider: `$env:TF_VAR_llm_provider = "openai"; cd infra/envs/dev/llm; terragrunt apply` |
 | ArgoCD app stuck OutOfSync with `image: :sha` (empty repo) | CI hasn't run yet — either push any commit or manually run the sed command from Step 8 in `construct.md` |
 | CloudWatch alarm perpetually `INSUFFICIENT_DATA` | Container Insights add-on needs ~5 minutes after install; for log-based alarms, trigger `/admin/inject/errors` to seed the metric |
 | Fluent Bit pods `CrashLoopBackOff` | The bootstrap script's `sed` didn't substitute `ACCOUNT_ID_PLACEHOLDER`. Check with `kubectl -n logging get sa fluent-bit -o yaml` — the role annotation must have your real account ID |
+| EKS node group `CREATE_FAILED — not eligible for Free Tier` | Free-Tier-restricted account. Both nodegroups are `t3.small` by default (eligible). Do not raise to `t3.medium`. |
+| Kinesis apply fails with `SubscriptionRequiredException` | Expected on Free-Tier/new accounts. The `kinesis` module is `skip = true` by default; nothing downstream consumes it. |
+| Pods stuck Pending with `Too many pods` | vpc-cni prefix delegation raises max-pods to ~110 on t3.small. If a node still reports max-pods=8, it was created before the NodeConfig landed — recycle it with `aws eks update-nodegroup-version --cluster-name intelliops-dev --nodegroup-name <ng> --force` |
+| RCA Lambda cold-starts with `No module named 'pydantic_core._pydantic_core'` | `lambda/build_function.py` must pass `--platform manylinux2014_x86_64 --python-version 3.12 --only-binary=:all:` to pip. Already fixed on `main`. |
+| CI Docker build: `invalid tag "***.dkr.ecr..."` | The `AWS_ACCOUNT_ID` GitHub secret has a trailing newline. Reset with `"573978149165" \| gh secret set AWS_ACCOUNT_ID --no-store` (or use `printf %s` on bash). |
+| CI OIDC assume-role: `AccessDenied ... sts:AssumeRoleWithWebIdentity` | GitHub's post-2025 OIDC subject includes immutable IDs (`repo:{owner}@{ownerId}/{repo}@{repoId}:...`). The Terraform `github_actions` module writes a trust policy that matches this; roll-your-own roles must too. |
+| CD workflow: `error: You must be logged in to the server` at kubectl step | The GitHub Actions role has no EKS Access Entry. Fixed by the Terraform `github_actions` module (creates entry + associates `AmazonEKSClusterAdminPolicy`). |
+| CD workflow hangs at `until curl ... /healthz` | `argocd-initial-admin-secret` doesn't exist (ArgoCD v3 dropped auto-creation). Fixed in `bootstrap.sh` / `bootstrap.ps1` — they seed both the secret and the bcrypt hash. |
+| CI Trivy container scan blocks on `perl-base` CRITICALs | Soft-gated for now (`continue-on-error: true`). Restore the hard gate after moving app Dockerfiles to distroless / Alpine. |
 | `terragrunt destroy` hangs on VPC | Load balancer, NAT gateway, or ENI still in use. Delete via console, then retry |
 
 ---
@@ -945,12 +955,13 @@ Quick reference of the moving parts you provisioned:
 | VPC + Subnets | Network isolation, 3-AZ layout | Free |
 | NAT Gateway | Private-subnet pods reaching the internet | $32/mo |
 | EKS Control Plane | Managed Kubernetes API server | $73/mo |
-| System Nodes (t3.medium × 2) | Karpenter, ArgoCD, Rollouts, Fluent Bit, security add-ons | ~$60/mo |
+| System Nodes (t3.small × 1) | Karpenter (single replica, memory-tuned), coredns, kube-proxy, vpc-cni, ebs-csi | ~$15/mo |
+| Workload Nodes (t3.small × 3) | ArgoCD, Rollouts, Fluent Bit, security add-ons, apps | ~$45/mo |
 | Karpenter | Provisions extra workload nodes when pending pods appear | Free (nodes cost extra) |
 | ECR Repositories | Docker image storage | Free tier |
 | ALB | External HTTP entry point for the UI | ~$17/mo |
 | CloudWatch Log Group | Structured JSON app logs, 30-day retention | ~$5/mo |
-| Kinesis Streams (×2) | Event streaming (currently for future use) | ~$22/mo |
+| ~~Kinesis Streams~~ | Skipped — Free-Tier-restricted accounts reject `CreateStream`; not consumed downstream | $0 |
 | DynamoDB (on-demand) | Incident audit trail | Pennies |
 | Secrets Manager (×5) | LLM keys, Slack webhook, ArgoCD token, signing secret | ~$2/mo |
 | Lambda × 4 | RCA + remediator + rollback request + rollback execute | Pennies |

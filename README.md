@@ -85,7 +85,7 @@ Step-by-step AWS deployment with cost controls in [`construct.md`](construct.md)
 
 | Layer | Technology |
 |---|---|
-| Infrastructure | Terraform + Terragrunt (10 per-module units) |
+| Infrastructure | Terraform + Terragrunt (10 per-module units + a `github_actions` module for CI OIDC) |
 | Cloud | AWS — VPC · EKS 1.33 · ECR · ALB · Kinesis · DynamoDB · Bedrock · Secrets Manager · CloudWatch · API Gateway |
 | Autoscaling | Karpenter (spot + on-demand) · HPA |
 | CI/CD | GitHub Actions → ArgoCD |
@@ -130,7 +130,7 @@ intelliops/
 │   ├── fluent-bit/       logs → CloudWatch
 │   └── security/         Kyverno · Falco · Trivy · ESO · NetworkPolicies
 ├── infra/
-│   ├── modules/          10 Terraform modules
+│   ├── modules/          11 Terraform modules (incl. github_actions)
 │   └── envs/dev/         per-module Terragrunt units
 ├── k8s/
 │   ├── apps/             FastAPI service source
@@ -239,5 +239,7 @@ Fixed baseline (EKS control plane + NAT Gateway + 2 nodes) is ~$170. See [`const
 - **Multi-environment (`prod`, `staging`)** — pattern is there in Terragrunt, just needs another `envs/` folder
 - **Real ExternalSecret resources** — ESO is deployed and a ClusterSecretStore for AWS Secrets Manager is included, but nothing currently syncs into a K8s Secret (all secrets are consumed by Lambdas via IAM)
 - **VPC config for the rollback Lambda** — currently runs outside the VPC, so if ArgoCD is on ClusterIP it can't be reached. Rollback executes as a dry-run audit entry in that case. Adding VPC config is a small extension noted in the code.
+- **Kinesis streams** — the module is marked `skip = true` because some AWS personal accounts (Free-Tier-restricted) reject Kinesis's `CreateStream` with `SubscriptionRequiredException`, and no downstream module consumes its outputs. Re-enable by removing the skip if your account allows it.
+- **Hard-gated container Trivy scan** — currently soft-gated because the python base image ships `fix_deferred` perl-base CVEs. Move app Dockerfiles to distroless or Alpine and flip `exit-code` back to `"1"`.
 
 Built as a portfolio project. Contributions and questions welcome.

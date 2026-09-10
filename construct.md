@@ -102,48 +102,33 @@ aws s3api put-bucket-encryption \
   }'
 ```
 
-### 3b. Create the GitHub Actions OIDC role  (skip if you won't push from CI)
+### 3b. Register the GitHub Actions OIDC provider  (skip if you won't push from CI)
 
-If you'll only demo locally without pushing changes back, this can be skipped. Otherwise the CI/CD workflows need an OIDC-assumable role.
+If you'll only demo locally without pushing changes back, this whole section can be skipped. Otherwise the CI/CD workflows need an OIDC-assumable role.
+
+The **IAM role, trust policy, and EKS access entry are now created by the Terraform `github_actions` module** — you don't have to author them by hand. Only the account-wide OIDC provider itself is a one-time manual step:
 
 ```bash
-# One-time: create the OIDC provider for GitHub Actions
 aws iam create-open-id-connect-provider \
   --url https://token.actions.githubusercontent.com \
   --client-id-list sts.amazonaws.com \
   --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
-
-# Create the role — replace <YOUR_GITHUB_USER>/<REPO_NAME>
-cat > trust-policy.json <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {
-      "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
-    },
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {
-      "StringLike": {
-        "token.actions.githubusercontent.com:sub": "repo:mrsrujan/IntelliOps:*"
-      }
-    }
-  }]
-}
-EOF
-
-aws iam create-role \
-  --role-name intelliops-github-actions \
-  --assume-role-policy-document file://trust-policy.json
-
-aws iam attach-role-policy \
-  --role-name intelliops-github-actions \
-  --policy-arn arn:aws:iam::aws:policy/AdministratorAccess   # broad for demo; scope down for real use
 ```
 
-Add these as GitHub repo secrets (Settings → Secrets and variables → Actions):
-- `AWS_ACCOUNT_ID` — your account ID
-- `AWS_GITHUB_ACTIONS_ROLE` — `arn:aws:iam::${ACCOUNT_ID}:role/intelliops-github-actions`
+(If it already exists you'll get `EntityAlreadyExists` — safe to ignore.)
+
+If your GitHub repository isn't `mrsrujan/IntelliOps`, override the module default in step 5 with `-var github_repository=<owner>/<name>` or by exporting `TF_VAR_github_repository`.
+
+After Step 5 finishes, plug the module outputs into your repo secrets:
+
+```bash
+cd infra/envs/dev/github_actions
+ROLE_ARN=$(terragrunt output -raw role_arn)
+gh secret set AWS_GITHUB_ACTIONS_ROLE --repo <owner>/<repo> --body "$ROLE_ARN"
+printf %s "$ACCOUNT_ID" | gh secret set AWS_ACCOUNT_ID --repo <owner>/<repo>
+```
+
+*(`printf %s` is important — a trailing newline in the account-id secret breaks Docker's `tag` reference format on CI.)*
 
 ---
 
@@ -159,7 +144,10 @@ export TF_VAR_argocd_api_token=""                                   # empty for 
 
 # LLM provider (default is bedrock — no API key needed)
 export TF_VAR_llm_provider="bedrock"
-export TF_VAR_llm_model="bedrock/anthropic.claude-sonnet-4-6-v1:0"
+# Anthropic Claude Sonnet 4.6 on Bedrock only serves via a US inference
+# profile (on-demand throughput is not available on the raw foundation
+# model). Do not use the older `-v1:0` suffix.
+export TF_VAR_llm_model="bedrock/us.anthropic.claude-sonnet-4-6"
 
 # If you're using OpenAI instead:
 # export TF_VAR_llm_provider="openai"
@@ -199,16 +187,19 @@ Terragrunt walks the module dependency graph and applies each unit in order. Exp
 If you'd rather see each step:
 
 ```bash
-cd infra/envs/dev/vpc  && terragrunt apply
-cd ../ecr              && terragrunt apply
-cd ../eks              && terragrunt apply
-cd ../logs             && terragrunt apply
-cd ../kinesis          && terragrunt apply
-cd ../dynamodb         && terragrunt apply
-cd ../llm              && terragrunt apply
-cd ../lambda           && terragrunt apply
-cd ../observability    && terragrunt apply
-cd ../remediation      && terragrunt apply
+cd infra/envs/dev/vpc              && terragrunt apply
+cd ../ecr                          && terragrunt apply
+cd ../eks                          && terragrunt apply   # ~15-20 min
+cd ../logs                         && terragrunt apply
+cd ../dynamodb                     && terragrunt apply
+cd ../llm                          && terragrunt apply
+cd ../lambda                       && terragrunt apply
+cd ../observability                && terragrunt apply
+cd ../remediation                  && terragrunt apply
+cd ../github_actions               && terragrunt apply   # only if you'll use CI
+# kinesis module is marked skip=true — the reference architecture doesn't
+# consume its outputs, and some AWS accounts (Free-Tier restricted, new
+# personal accounts) return SubscriptionRequiredException for it.
 ```
 
 Grab the Slack callback URL from the remediation output:
@@ -233,9 +224,13 @@ bash k8s/argocd/install/bootstrap.sh
 ```
 
 The script:
-- Installs ArgoCD v2.12.0 + Argo Rollouts v1.7.2
+- Installs ArgoCD v3.0.0 + Argo Rollouts v1.8.0
+- Seeds `argocd-initial-admin-secret` and patches the bcrypt hash in `argocd-secret` (ArgoCD v3 no longer creates the initial-admin secret automatically)
+- Registers the built-in `in-cluster` destination secret so the ApplicationSet can resolve `https://kubernetes.default.svc` (also no longer implicit in v3)
 - Substitutes `ACCOUNT_ID_PLACEHOLDER` in every ArgoCD app manifest with your real account ID
 - Applies the ArgoCD Project and all Applications
+
+On Windows, use `pwsh k8s/argocd/install/bootstrap.ps1` instead — same behaviour.
 
 Wait for ArgoCD to sync everything (~5 min):
 
@@ -412,6 +407,27 @@ The chaos workflow runs `kubectl port-forward`, which requires the runner to hav
 
 **Rollback Lambda posts dry-run audit instead of actually rolling back**
 Expected until VPC config is added to the rollback_execute Lambda so it can reach ArgoCD's ClusterIP service. See [design note in README](README.md#not-included-by-design).
+
+**EKS node group CREATE_FAILED — `not eligible for Free Tier`**
+Some AWS personal accounts are pinned to Free-Tier-eligible instance types. The default (`t3.small` on both nodegroups) is eligible; do not raise to `t3.medium` on such accounts. The workload nodegroup is intentionally `desired_size = 3` because prefix delegation + max-pods=110 is per-node — a single t3.small cannot fit ArgoCD, Prometheus, Falco, and the apps together on its own even with the raised pod cap.
+
+**`Runtime.ImportModuleError: No module named 'pydantic_core._pydantic_core'` in the RCA Lambda**
+Fixed on `main` — `lambda/build_function.py` uses `--platform manylinux2014_x86_64 --python-version 3.12 --implementation cp --only-binary=:all:` when pip-installing Lambda dependencies. If you see this on a fork/branch that predates the fix, cherry-pick that change.
+
+**CI push-back fails with `AccessDenied ... sts:AssumeRoleWithWebIdentity`**
+GitHub Actions' post-2025 OIDC token uses immutable identifiers — the `sub` claim is `repo:{owner}@{ownerId}/{repo}@{repoId}:...`. The Terraform `github_actions` module already writes a trust policy that matches this via the stable `repository` claim + a `sub` StringLike with `@*` in both slots. If you rolled your own role, replicate that pattern.
+
+**CI Docker build fails with `invalid tag "***.dkr.ecr..."` / `invalid reference format`**
+The `AWS_ACCOUNT_ID` GitHub secret has a trailing newline. Reset with `printf %s "$ACCOUNT_ID" | gh secret set AWS_ACCOUNT_ID` — `echo` will re-add the newline.
+
+**Pods stuck Pending with `Too many pods` on t3.small nodes**
+The vpc-cni prefix-delegation addon config (`ENABLE_PREFIX_DELEGATION=true`) plus the `cloudinit_pre_nodeadm` NodeConfig on each managed nodegroup together raise max-pods from 8 to ~110. Both are already in `infra/modules/eks/main.tf`. If you see max-pods=8 on a Ready node, the nodegroup was created before the NodeConfig landed — recycle it: `aws eks update-nodegroup-version --cluster-name intelliops-dev --nodegroup-name <ng> --force`.
+
+**CD workflow times out at `until curl ... localhost:8080/healthz`**
+`kubectl port-forward` silently failed. Two common causes: (a) the GitHub Actions role has no EKS Access Entry (fixed by the `github_actions` Terraform module — check `aws eks list-access-entries --cluster-name intelliops-dev`), or (b) the `argocd-initial-admin-secret` doesn't exist (fixed by the updated bootstrap script — check `kubectl -n argocd get secret argocd-initial-admin-secret`).
+
+**Trivy container scan blocks the pipeline on `perl-base` CRITICALs**
+The scan is currently soft-gated (`continue-on-error: true`, `exit-code: "0"`) because the python base image ships `fix_deferred` perl CVEs we can't patch here. Restore the hard gate once the app Dockerfiles are moved to a distroless or Alpine base.
 
 ---
 
